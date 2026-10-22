@@ -56,7 +56,7 @@ interface YouPiSessionData {
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { cartItems, subtotal, clearCart } = useCart();
+  const { cartItems, subtotal, clearCart, hasHydrated } = useCart();
 
   // Step state: 1 = Address & Contact, 2 = Payment, 3 = Confirmation
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -494,8 +494,13 @@ export default function CheckoutPage() {
 
       {/* Main Body */}
       <main className="max-w-[1240px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-10 flex-1">
-        {/* If cart is empty and not in confirmation state */}
-        {cartItems.length === 0 && step !== 3 ? (
+        {/* While hydration is loading */}
+        {!hasHydrated && step !== 3 ? (
+          <div className="bg-white border border-[#e7e2d8] rounded-2xl p-12 text-center max-w-[540px] mx-auto space-y-4 shadow-sm">
+            <div className="w-10 h-10 border-3 border-[#02cb5a] border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-[14px] text-[#747576]">Restoring your checkout session...</p>
+          </div>
+        ) : cartItems.length === 0 && step !== 3 ? (
           <div className="bg-white border border-[#e7e2d8] rounded-2xl p-8 sm:p-12 text-center max-w-[540px] mx-auto space-y-4 shadow-sm">
             <div className="w-16 h-16 rounded-full bg-[#fafafa] border border-[#e7e2d8] flex items-center justify-center mx-auto text-[#747576]">
               <ShoppingBag size={28} />

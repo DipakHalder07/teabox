@@ -21,14 +21,33 @@ import { StoredOrderData } from "@/lib/ordersDb";
 export default function AdminOverviewPage() {
   const [orders, setOrders] = useState<StoredOrderData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dbStatus, setDbStatus] = useState<{
+    connected: boolean;
+    driver: string;
+    host: string;
+    latencyMs: number | null;
+  } | null>(null);
 
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/orders");
-      const data = await res.json();
-      if (data?.orders) {
-        setOrders(data.orders);
+      const [ordersRes, healthRes] = await Promise.allSettled([
+        fetch("/api/admin/orders"),
+        fetch("/api/health"),
+      ]);
+
+      if (ordersRes.status === "fulfilled") {
+        const data = await ordersRes.value.json();
+        if (data?.orders) {
+          setOrders(data.orders);
+        }
+      }
+
+      if (healthRes.status === "fulfilled") {
+        const healthData = await healthRes.value.json();
+        if (healthData?.database) {
+          setDbStatus(healthData.database);
+        }
       }
     } catch (err) {
       console.error("Failed to load dashboard orders:", err);
@@ -80,30 +99,69 @@ export default function AdminOverviewPage() {
         </div>
       </div>
 
-      {/* Database Connection Status Banner */}
-      <div className="bg-white border border-[#e7e2d8] rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#02cb5a]/20 border border-[#02cb5a]/40 flex items-center justify-center text-[#016c2f]">
-            <Database size={20} />
+      {/* Database Live Monitoring Banner */}
+      <div className="bg-white border border-[#e7e2d8] rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-2xs">
+        <div className="flex items-start sm:items-center gap-3.5">
+          <div
+            className={`w-11 h-11 rounded-xl border flex items-center justify-center shrink-0 ${
+              dbStatus?.connected
+                ? "bg-[#02cb5a]/15 border-[#02cb5a]/40 text-[#016c2f]"
+                : "bg-[#fff3cd] border-[#ffeeba] text-[#856404]"
+            }`}
+          >
+            <Database size={22} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-[14px] text-[#202020]">
-                PostgreSQL &amp; Prisma ORM Active
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-[15px] text-[#202020]">
+                {dbStatus?.connected
+                  ? "PostgreSQL Connected (Prisma ORM)"
+                  : "Database: In-Memory Storage Active (PostgreSQL Offline)"}
               </span>
-              <span className="bg-[#02cb5a]/20 text-[#016c2f] text-[10px] font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#02cb5a] animate-pulse" />
-                Live Engine
+              <span
+                className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 ${
+                  dbStatus?.connected
+                    ? "bg-[#02cb5a]/20 text-[#016c2f]"
+                    : "bg-[#fff3cd] text-[#856404]"
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    dbStatus?.connected
+                      ? "bg-[#02cb5a] animate-pulse"
+                      : "bg-[#e27a00]"
+                  }`}
+                />
+                {dbStatus?.connected
+                  ? `Live (${dbStatus.latencyMs ? `${dbStatus.latencyMs}ms` : "Active"})`
+                  : "Fallback Mode"}
               </span>
             </div>
-            <p className="text-[12px] text-[#747576] mt-0.5">
-              Orders and payments are synchronized directly to PostgreSQL tables via Prisma ORM with instant fallback caching.
+            <p className="text-[12.5px] text-[#747576] mt-0.5">
+              {dbStatus?.connected
+                ? `Orders, inventory, and payment logs are synced in real-time to PostgreSQL at ${dbStatus.host}.`
+                : `PostgreSQL server is offline at ${dbStatus?.host || "localhost:5432"}. The store is running without disruption using memory caching.`}
             </p>
           </div>
         </div>
 
-        <div className="text-[12px] font-mono bg-[#fafafa] border border-[#e7e2d8] px-3 py-1.5 rounded-lg text-[#5c5a52] shrink-0">
-          prisma/schema.prisma · PostgreSQL
+        <div className="flex items-center gap-2 self-stretch md:self-auto justify-end shrink-0">
+          <a
+            href="/api/health"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1.5 bg-[#fafafa] hover:bg-[#f0ece1] border border-[#e7e2d8] rounded-lg text-[12px] font-semibold text-[#1f3a2c] flex items-center gap-1.5 transition-colors"
+            title="View raw database health JSON"
+          >
+            <span>Health API</span>
+            <ExternalLink size={13} />
+          </a>
+          <div
+            className="text-[11.5px] font-mono bg-[#fafafa] border border-[#e7e2d8] px-3 py-1.5 rounded-lg text-[#5c5a52] hidden sm:block"
+            title="Run this command in terminal to open visual table editor"
+          >
+            npx prisma studio
+          </div>
         </div>
       </div>
 
