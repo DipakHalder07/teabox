@@ -20,8 +20,8 @@ export default function ProofBar() {
           <span>
             Backed by the late{" "}
             <Link
-              href="#why-teabox"
-              className="text-[#1f3a2c] font-bold av-hover-underline"
+              href="/pages/why-teabox#ratan-tata"
+              className="text-[#1f3a2c] font-bold underline decoration-[#02cb5a] underline-offset-4 hover:text-[#016c2f] transition-colors"
             >
               Ratan Tata
             </Link>{" "}
@@ -68,8 +68,8 @@ export default function ProofBar() {
           </div>
 
           <Link
-            href="#why-teabox"
-            className="text-[#1f3a2c] font-bold av-hover-underline text-[13px] sm:text-[14px]"
+            href="/pages/why-teabox#press"
+            className="text-[#1f3a2c] font-bold underline decoration-[#02cb5a] underline-offset-4 hover:text-[#016c2f] transition-colors text-[13px] sm:text-[14px]"
           >
             Read the coverage →
           </Link>

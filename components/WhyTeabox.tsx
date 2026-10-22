@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Play, MapPin } from "lucide-react";
+import { Play, MapPin, X } from "lucide-react";
 
 export default function WhyTeabox() {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -22,39 +22,61 @@ export default function WhyTeabox() {
           {/* Card 1: Photo / Video Card */}
           <div className="bg-[#fafafa] border border-[#e7e2d8] rounded-[10px] overflow-hidden transition-colors hover:border-[#1f3a2c]">
             <div className="relative w-full aspect-[16/9] bg-[#0e1713] overflow-hidden">
-              <Image
-                src="/assets/why-teabox-map.webp"
-                alt="Sourced hours from the estates"
-                fill
-                unoptimized
-                className="object-cover"
-                sizes="(max-width: 999px) 100vw, 400px"
-              />
-              <span className="absolute top-2 left-2 z-20 bg-[rgba(20,32,26,0.85)] rounded-[4px] px-[9px] py-[5px] text-[11px] font-bold text-white flex items-center gap-1.5 pointer-events-none">
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#02cb5a"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M12 21.5 5 15a7.5 7.5 0 1 1 14 0Z"></path>
-                  <path d="M12 13.5V7.5"></path>
-                </svg>
-                We are here
-              </span>
+              {isPlaying ? (
+                <div className="relative w-full h-full">
+                  <video
+                    src="https://in.teabox.com/cdn/shop/videos/c/vp/30fed6c076794cdaa7169317d2b7b516/30fed6c076794cdaa7169317d2b7b516.HD-1080p-7.2Mbps-97679818.mp4?v=0"
+                    autoPlay
+                    controls
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsPlaying(false)}
+                    className="absolute top-2 right-2 z-30 bg-black/70 hover:bg-black text-white rounded-full p-1.5 transition-colors cursor-pointer"
+                    aria-label="Close video"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <Image
+                    src="/assets/why-teabox-map.webp"
+                    alt="Sourced hours from the estates"
+                    fill
+                    unoptimized
+                    className="object-cover"
+                    sizes="(max-width: 999px) 100vw, 400px"
+                  />
+                  <span className="absolute top-2 left-2 z-20 bg-[rgba(20,32,26,0.85)] rounded-[4px] px-[9px] py-[5px] text-[11px] font-bold text-white flex items-center gap-1.5 pointer-events-none">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#02cb5a"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M12 21.5 5 15a7.5 7.5 0 1 1 14 0Z"></path>
+                      <path d="M12 13.5V7.5"></path>
+                    </svg>
+                    We are here
+                  </span>
 
-              <button
-                type="button"
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-[rgba(20,32,26,0.85)] flex items-center justify-center text-white cursor-pointer transition-transform active:scale-95 shadow-md"
-                aria-label="Play video"
-              >
-                <Play size={20} className="fill-white translate-x-0.5" />
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPlaying(true)}
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-[rgba(20,32,26,0.85)] flex items-center justify-center text-white cursor-pointer transition-transform active:scale-95 shadow-md"
+                    aria-label="Play video"
+                  >
+                    <Play size={20} className="fill-white translate-x-0.5" />
+                  </button>
+                </>
+              )}
             </div>
 
             <div className="p-3 sm:p-4">
@@ -168,8 +190,8 @@ export default function WhyTeabox() {
             <div>
               <p className="text-[15px] font-bold leading-tight">
                 <Link
-                  href="https://in.teabox.com/pages/in-the-press"
-                  className="text-[#1f3a2c] underline"
+                  href="/pages/why-teabox#press"
+                  className="text-[#1f3a2c] font-bold underline decoration-[#02cb5a] underline-offset-4 hover:text-[#016c2f] transition-colors"
                 >
                   In CNN &amp; NY Times →
                 </Link>
@@ -200,8 +222,8 @@ export default function WhyTeabox() {
             <div>
               <p className="text-[15px] font-bold leading-tight">
                 <Link
-                  href="https://in.teabox.com/pages/ratan-tata-backs-teabox-story"
-                  className="text-[#1f3a2c] underline"
+                  href="/pages/why-teabox#ratan-tata"
+                  className="text-[#1f3a2c] font-bold underline decoration-[#02cb5a] underline-offset-4 hover:text-[#016c2f] transition-colors"
                 >
                   Backed by the late Ratan Tata →
                 </Link>
@@ -246,8 +268,8 @@ export default function WhyTeabox() {
               <div className="text-[15px] text-[#202020]">
                 <span className="font-bold">Kausshal Dugarr</span>, founder ·{" "}
                 <Link
-                  href="#why-teabox"
-                  className="font-bold text-[#1f3a2c] av-hover-underline"
+                  href="/pages/why-teabox"
+                  className="font-bold text-[#1f3a2c] underline decoration-[#02cb5a] underline-offset-4 hover:text-[#016c2f] transition-colors"
                 >
                   Why he started Teabox →
                 </Link>
@@ -257,30 +279,52 @@ export default function WhyTeabox() {
 
           {/* Right Column: Tea Garden Map & Media */}
           <div className="relative aspect-[16/9] w-full rounded-xl overflow-hidden border border-[#e7e2d8] bg-[#0e1713]">
-            <Image
-              src="/assets/why-teabox-map.webp"
-              alt="Darjeeling Tea Gardens"
-              fill
-              unoptimized
-              className="object-cover"
-              sizes="45vw"
-            />
+            {isPlaying ? (
+              <div className="relative w-full h-full">
+                <video
+                  src="https://in.teabox.com/cdn/shop/videos/c/vp/30fed6c076794cdaa7169317d2b7b516/30fed6c076794cdaa7169317d2b7b516.HD-1080p-7.2Mbps-97679818.mp4?v=0"
+                  autoPlay
+                  controls
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsPlaying(false)}
+                  className="absolute top-3 right-3 z-30 bg-black/75 hover:bg-black text-white rounded-full p-2 transition-colors cursor-pointer"
+                  aria-label="Close video"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            ) : (
+              <>
+                <Image
+                  src="/assets/why-teabox-map.webp"
+                  alt="Darjeeling Tea Gardens"
+                  fill
+                  unoptimized
+                  className="object-cover"
+                  sizes="45vw"
+                />
 
-            {/* Play Button Overlay */}
-            <button
-              type="button"
-              onClick={() => setIsPlaying(!isPlaying)}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full bg-[rgba(20,32,26,0.85)] text-white flex items-center justify-center transition-transform hover:scale-110 shadow-lg cursor-pointer"
-              aria-label="Play tea gardens footage"
-            >
-              <Play size={24} className="fill-white translate-x-0.5" />
-            </button>
+                {/* Play Button Overlay */}
+                <button
+                  type="button"
+                  onClick={() => setIsPlaying(true)}
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full bg-[rgba(20,32,26,0.85)] text-white flex items-center justify-center transition-transform hover:scale-110 shadow-lg cursor-pointer"
+                  aria-label="Play tea gardens footage"
+                >
+                  <Play size={24} className="fill-white translate-x-0.5" />
+                </button>
 
-            {/* Location Pin */}
-            <div className="absolute left-3 bottom-3 bg-[rgba(20,32,26,0.85)] rounded-md px-3 py-2 text-[12px] font-bold text-white flex items-center gap-2">
-              <MapPin size={16} className="text-[#02cb5a]" />
-              <span>We are here — among the Darjeeling gardens</span>
-            </div>
+                {/* Location Pin */}
+                <div className="absolute left-3 bottom-3 bg-[rgba(20,32,26,0.85)] rounded-md px-3 py-2 text-[12px] font-bold text-white flex items-center gap-2 pointer-events-none">
+                  <MapPin size={16} className="text-[#02cb5a]" />
+                  <span>We are here — among the Darjeeling gardens</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

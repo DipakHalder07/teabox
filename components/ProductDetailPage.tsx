@@ -360,7 +360,8 @@ export default function ProductDetailPage({ product }: { product: Product }) {
                         src={img}
                         alt={`${product.title} - view ${idx + 1}`}
                         fill
-                        priority={idx === 0 || idx === 1}
+                        loading={idx === 0 ? "eager" : "lazy"}
+                        priority={idx === 0}
                         className="object-contain p-2 sm:p-4 select-none pointer-events-none transition-transform duration-500 ease-out"
                         sizes="(max-width: 1024px) 100vw, 50vw"
                       />
@@ -437,6 +438,7 @@ export default function ProductDetailPage({ product }: { product: Product }) {
                       src={img}
                       alt={`Thumbnail ${idx + 1}`}
                       fill
+                      sizes="68px"
                       className="object-contain p-0.5"
                     />
                   </button>
@@ -879,7 +881,7 @@ export default function ProductDetailPage({ product }: { product: Product }) {
                       : "border-transparent opacity-60 hover:opacity-100"
                   }`}
                 >
-                  <Image src={img} alt={`Thumb ${idx + 1}`} fill className="object-cover" />
+                  <Image src={img} alt={`Thumb ${idx + 1}`} fill sizes="48px" className="object-cover" />
                 </button>
               ))}
             </div>

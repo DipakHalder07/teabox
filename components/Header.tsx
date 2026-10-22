@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { motion } from "motion/react";
 import { useCart } from "./context/CartContext";
 import { Search, User, ShoppingBag, Menu, X, ChevronDown, ArrowRight } from "lucide-react";
 
@@ -15,6 +16,11 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
   const navRef = useRef<HTMLDivElement>(null);
 
   const [headerBottom, setHeaderBottom] = useState(68);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Close menus on outside click
   useEffect(() => {
@@ -85,6 +91,7 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
                 width={120}
                 height={28}
                 priority
+                style={{ width: "auto" }}
                 className="h-[25px] sm:h-[28px] w-auto object-contain"
               />
             </Link>
@@ -100,6 +107,7 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
                 width={128}
                 height={28}
                 priority
+                style={{ width: "auto" }}
                 className="h-[25px] xl:h-[27px] w-auto object-contain"
               />
             </Link>
@@ -268,14 +276,21 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
             <button
               type="button"
               onClick={openCart}
+              suppressHydrationWarning
               className="relative p-2 text-[#202020] hover:text-[#016c2f] transition-colors flex items-center justify-center cursor-pointer"
-              aria-label={`Cart with ${totalCount} items`}
+              aria-label={`Cart with ${mounted ? totalCount : 0} items`}
             >
               <ShoppingBag size={22} strokeWidth={1.8} />
-              {totalCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-[#02cb5a] text-[#1f3a2c] text-[11px] font-bold w-[19px] h-[19px] rounded-full flex items-center justify-center shadow-sm">
+              {mounted && totalCount > 0 && (
+                <motion.span
+                  key={totalCount}
+                  initial={{ scale: 0.5 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                  className="absolute -top-1 -right-1 bg-[#02cb5a] text-[#1f3a2c] text-[11px] font-bold w-[19px] h-[19px] rounded-full flex items-center justify-center shadow-sm"
+                >
                   {totalCount}
-                </span>
+                </motion.span>
               )}
             </button>
           </div>
@@ -425,6 +440,7 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
                         src="/assets/promo-prebiotic.webp"
                         alt="Prebiotic Instant Tea"
                         fill
+                        sizes="260px"
                         className="object-cover group-hover:scale-105 transition-transform duration-300"
                       />
                     </div>

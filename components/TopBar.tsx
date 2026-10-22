@@ -14,14 +14,12 @@ export default function TopBar() {
           Corporate Gifting
         </Link>
         <span className="text-[#5C5A52] select-none">|</span>
-        <a
-          href="https://teabox.clickpost.in/en"
-          target="_blank"
-          rel="noopener noreferrer"
+        <Link
+          href="/track"
           className="text-[#1f3a2c] font-bold underline decoration-[#02cb5a] underline-offset-[3px] hover:opacity-80 transition-opacity"
         >
           Track
-        </a>
+        </Link>
       </div>
     </aside>
   );

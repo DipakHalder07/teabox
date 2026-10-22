@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/components/context/CartContext";
+import { Toaster } from "sonner";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -28,7 +29,16 @@ export default function RootLayout({
   return (
     <html lang="en" dir="ltr" className={`${poppins.variable}`}>
       <body className="min-h-screen bg-white text-[#202020] antialiased selection:bg-[#02cb5a] selection:text-[#1f3a2c]">
-        <CartProvider>{children}</CartProvider>
+        <CartProvider>
+          {children}
+          <Toaster
+            position="top-right"
+            richColors
+            closeButton
+            duration={3500}
+            theme="light"
+          />
+        </CartProvider>
       </body>
     </html>
   );

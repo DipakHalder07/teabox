@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Image from "next/image";
+import { motion, AnimatePresence } from "motion/react";
 import { useCart } from "./context/CartContext";
 import { X, CheckCircle, Sparkles, ArrowRight } from "lucide-react";
 
@@ -18,8 +19,6 @@ export default function TeaFinderModal({ isOpen, onClose }: TeaFinderModalProps)
     time: "",
     flavor: "",
   });
-
-  if (!isOpen) return null;
 
   const handleReset = () => {
     setStep(1);
@@ -60,8 +59,23 @@ export default function TeaFinderModal({ isOpen, onClose }: TeaFinderModalProps)
   const rec = getRecommendation();
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="relative w-full max-w-[540px] bg-white rounded-2xl shadow-2xl border border-[#e7e2d8] overflow-hidden">
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+            transition={{ duration: 0.2 }}
+            className="relative w-full max-w-[540px] bg-white rounded-2xl shadow-2xl border border-[#e7e2d8] overflow-hidden z-10"
+          >
         {/* Modal Header */}
         <div className="p-6 pb-4 border-b border-[#e7e2d8] flex items-center justify-between bg-[#fafafa]">
           <div className="flex items-center gap-2">
@@ -189,6 +203,7 @@ export default function TeaFinderModal({ isOpen, onClose }: TeaFinderModalProps)
                     src={rec.image}
                     alt={rec.title}
                     fill
+                    sizes="80px"
                     className="object-cover"
                   />
                 </div>
@@ -235,7 +250,9 @@ export default function TeaFinderModal({ isOpen, onClose }: TeaFinderModalProps)
             </div>
           )}
         </div>
-      </div>
+      </motion.div>
     </div>
+  )}
+</AnimatePresence>
   );
 }

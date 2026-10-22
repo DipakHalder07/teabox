@@ -21,6 +21,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { useCart } from "./context/CartContext";
+import { cleanIndianPhone } from "@/lib/validations/checkout";
 
 interface FastrrCheckoutModalProps {
   isOpen: boolean;
@@ -80,6 +81,22 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   const [isVerifyingUtr, setIsVerifyingUtr] = useState(false);
   const [copiedVpa, setCopiedVpa] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState(600); // 10 minutes
+
+  // Handle phone number input & autofill sanitization (+91 or leading 0 removal)
+  const handlePhoneChange = (val: string) => {
+    const cleaned = cleanIndianPhone(val);
+    setPhone(cleaned);
+  };
+
+  // Automatically clean phone when browser autofills (+91 or leading 0)
+  useEffect(() => {
+    if (phone) {
+      const cleaned = cleanIndianPhone(phone);
+      if (cleaned !== phone) {
+        setPhone(cleaned);
+      }
+    }
+  }, [phone]);
 
   // Handle pincode auto lookup
   const handlePincodeChange = (val: string) => {
@@ -293,7 +310,44 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
           body: JSON.stringify({ orderId, utr: assignedUtr }),
         });
       }
-    } catch {}
+
+      // Persist order directly into PostgreSQL / Admin database
+      await fetch("/api/admin/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderNumber: orderId,
+          customerName: fullName,
+          customerPhone: phone,
+          customerEmail: null,
+          address,
+          city,
+          state,
+          pincode,
+          landmark,
+          subtotal,
+          discountAmount,
+          couponCode: appliedCoupon?.code || null,
+          shippingFee,
+          codFee,
+          totalAmount: finalTotal,
+          paymentMethod,
+          paymentStatus: paymentMethod === "upi" ? "PAID" : "PENDING",
+          orderStatus: "PROCESSING",
+          utrNumber: paymentMethod === "upi" ? assignedUtr : null,
+          items: cartItems.map((item) => ({
+            productId: item.id,
+            title: item.title,
+            weight: item.weight,
+            price: item.price,
+            quantity: item.quantity,
+            image: item.image,
+          })),
+        }),
+      });
+    } catch (e) {
+      console.warn("Order persistence log:", e);
+    }
 
     setTimeout(() => {
       setIsProcessing(false);
@@ -324,6 +378,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
               alt="Teabox"
               width={100}
               height={26}
+              style={{ width: "auto" }}
               className="h-6 w-auto brightness-0 invert"
             />
             <span className="text-[11px] bg-[#02cb5a] text-[#1f3a2c] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
@@ -391,7 +446,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                       <div key={item.id} className="py-2 flex items-center justify-between gap-3 text-[13px]">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className="relative w-8 h-8 rounded bg-white border border-[#e7e2d8] shrink-0 overflow-hidden">
-                            <Image src={item.image} alt={item.title} fill className="object-contain p-0.5" />
+                            <Image src={item.image} alt={item.title} fill sizes="32px" className="object-contain p-0.5" />
                           </div>
                           <div className="min-w-0">
                             <span className="font-semibold text-[#202020] truncate block">{item.title}</span>
@@ -420,7 +475,14 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                     type="tel"
                     required
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    onChange={(e) => handlePhoneChange(e.target.value)}
+                    onPaste={(e) => {
+                      const pasted = e.clipboardData.getData("text");
+                      if (pasted) {
+                        e.preventDefault();
+                        handlePhoneChange(pasted);
+                      }
+                    }}
                     placeholder="10-digit mobile number"
                     className="flex-1 px-3.5 py-2.5 text-[14px] outline-none text-[#202020]"
                   />
@@ -953,14 +1015,14 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
               </div>
 
               <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-3">
-                <a
-                  href="https://teabox.clickpost.in/en"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full sm:w-auto border border-[#1f3a2c] hover:bg-[#fafafa] text-[#1f3a2c] font-bold text-[14px] px-6 py-3 rounded-lg transition-colors"
+                <Link
+                  href={`/order/${orderId}`}
+                  onClick={() => onClose()}
+                  className="w-full sm:w-auto bg-[#1f3a2c] hover:bg-[#14281e] text-white font-bold text-[14px] px-6 py-3 rounded-lg transition-colors flex items-center justify-center gap-1.5"
                 >
-                  Track Order
-                </a>
+                  <span>Track Live Order &amp; Invoice</span>
+                  <ArrowRight size={14} />
+                </Link>
                 <button
                   type="button"
                   onClick={() => {

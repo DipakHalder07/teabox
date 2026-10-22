@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyPaymentStatus } from "@/lib/youpi";
+import { utrVerificationSchema } from "@/lib/validations/checkout";
 
 export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams;
@@ -15,23 +16,21 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { orderId, utr } = body;
+    const rawBody = await req.json();
 
-    if (!orderId || !utr) {
+    const parsed = utrVerificationSchema.safeParse(rawBody);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "orderId and utr are required" },
+        {
+          error: "Invalid UTR format. Please enter a 12-digit numeric UPI reference number.",
+          details: parsed.error.format(),
+        },
         { status: 400 }
       );
     }
 
+    const { orderId, utr } = parsed.data;
     const cleanUtr = utr.trim().replace(/\D/g, "");
-    if (cleanUtr.length < 12) {
-      return NextResponse.json(
-        { error: "Invalid UPI Ref/UTR number. UTR must be 12 digits." },
-        { status: 400 }
-      );
-    }
 
     const result = verifyPaymentStatus(orderId, cleanUtr);
     return NextResponse.json({

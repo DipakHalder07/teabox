@@ -49,7 +49,7 @@ export default function Footer() {
     {
       title: "HELP",
       links: [
-        { label: "Track Your Order", href: "https://teabox.clickpost.in/en" },
+        { label: "Track Your Order", href: "/track" },
         { label: "Shipping & Returns", href: "#" },
         { label: "Contact Us", href: "#" },
       ],
@@ -76,6 +76,7 @@ export default function Footer() {
                 alt="Teabox India"
                 width={120}
                 height={30}
+                style={{ width: "auto" }}
                 className="h-7 w-auto object-contain"
               />
             </div>

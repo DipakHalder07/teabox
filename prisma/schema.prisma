@@ -1,0 +1,166 @@
+// Teabox PostgreSQL Database Schema via Prisma ORM
+// Supports Admin Dashboard, Products, Orders, Customers, and YouPI-PG Transactions
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------
+// 1. ADMIN USER & AUTHENTICATION
+// ----------------------------------------------------
+model Admin {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  role          String    @default("ADMIN") // "SUPER_ADMIN" | "ADMIN" | "MANAGER"
+  avatar        String?
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("admins")
+}
+
+// ----------------------------------------------------
+// 2. STORE CUSTOMERS & ADDRESSES
+// ----------------------------------------------------
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String?   @unique
+  phone         String?   @unique
+  role          String    @default("CUSTOMER")
+  addresses     Address[]
+  orders        Order[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("users")
+}
+
+model Address {
+  id          String    @id @default(cuid())
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName    String
+  phone       String
+  address     String
+  city        String
+  state       String
+  pincode     String
+  landmark    String?
+  isDefault   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("addresses")
+}
+
+// ----------------------------------------------------
+// 3. PRODUCTS & CATALOG
+// ----------------------------------------------------
+model Product {
+  id              String      @id
+  handle          String      @unique
+  title           String
+  subtitle        String?
+  description     String?
+  price           Int
+  originalPrice   Int?
+  rating          Float       @default(4.9)
+  reviewsCount    Int         @default(0)
+  badge           String?
+  image           String
+  secondaryImage  String?
+  galleryImages   String[]
+  weights         String[]
+  inStock         Boolean     @default(true)
+  stockQuantity   Int         @default(100)
+  category        String?
+  estate          String?
+  season          String?
+  caffeine        String?
+  orderItems      OrderItem[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("products")
+}
+
+// ----------------------------------------------------
+// 4. ORDERS & FULFILLMENT
+// ----------------------------------------------------
+model Order {
+  id              String          @id // e.g. TBX-2026-87421
+  orderNumber     String          @unique
+  customerName    String
+  customerPhone   String
+  customerEmail   String?
+  address         String
+  city            String
+  state           String
+  pincode         String
+  landmark        String?
+  subtotal        Int
+  discountAmount  Int             @default(0)
+  couponCode      String?
+  shippingFee     Int             @default(0)
+  codFee          Int             @default(0)
+  totalAmount     Int
+  paymentMethod   String          // "upi" | "cod"
+  paymentStatus   String          // "PAID" | "PENDING" | "FAILED"
+  orderStatus     String          @default("PROCESSING") // "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED"
+  trackingNumber  String?
+  trackingUrl     String?
+  utrNumber       String?
+  notes           String?
+  userId          String?
+  user            User?           @relation(fields: [userId], references: [id])
+  items           OrderItem[]
+  payments        PaymentLog[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String    @id @default(cuid())
+  orderId     String
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?  @relation(fields: [productId], references: [id])
+  title       String
+  weight      String?
+  price       Int
+  quantity    Int       @default(1)
+  image       String?
+
+  @@map("order_items")
+}
+
+// ----------------------------------------------------
+// 5. PAYMENT TRANSACTIONS (YouPI-PG & COD)
+// ----------------------------------------------------
+model PaymentLog {
+  id            String    @id @default(cuid())
+  orderId       String
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  gateway       String    @default("YouPI-PG")
+  merchantVpa   String?
+  amount        Int
+  utr           String?
+  status        String    // "INITIATED" | "VERIFIED" | "PENDING" | "FAILED"
+  verifiedAt    DateTime?
+  rawResponse   Json?
+  createdAt     DateTime  @default(now())
+
+  @@map("payment_logs")
+}
