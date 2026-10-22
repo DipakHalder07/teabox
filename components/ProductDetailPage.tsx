@@ -187,9 +187,13 @@ export default function ProductDetailPage({ product }: { product: Product }) {
     );
   };
 
-  // Related products
-  const relatedProducts = PRODUCTS.filter(
-    (p) => p.category === product.category && p.id !== product.id
+  // Related products (guaranteed unique by id)
+  const relatedProducts = Array.from(
+    new Map(
+      PRODUCTS.filter(
+        (p) => p.category === product.category && p.id !== product.id
+      ).map((p) => [p.id, p])
+    ).values()
   ).slice(0, 4);
 
   // Live PDP FAQs

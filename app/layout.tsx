@@ -11,6 +11,7 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("http://localhost:3000"),
   title: "Teabox: Buy Delicious Indian Teas Online - Delivered Fresh",
   description:
     "Enjoy India's finest tea selection. Buy 100% fresh, delicious organic teas direct from the source. Free express shipping on orders above INR 399.",

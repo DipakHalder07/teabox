@@ -1207,30 +1207,6 @@ export const PRODUCTS: Product[] = [
     "inStock": true
   },
   {
-    "id": "ayurvedic-chai-trial-pack",
-    "handle": "ayurvedic-chai-trial-pack",
-    "title": "Ayurvedic Chai Trial Pack (Free Valencia Glass Teacup & Ideal Teaspoon)",
-    "subtitle": "10 Ayurvedic Chais · Free Teacup & Spoon",
-    "price": 1598,
-    "originalPrice": 1918,
-    "discount": 17,
-    "rating": 5,
-    "reviewsCount": 123,
-    "weight": "Pack of 10",
-    "weights": [
-      "1 Box",
-      "2 Boxes"
-    ],
-    "image": "https://in.teabox.com/cdn/shop/files/08.14AyurvedicChaiSamplerslide1.jpg?v=1787053677&width=600",
-    "secondaryImage": "https://in.teabox.com/cdn/shop/files/08.14AyurvedicChaiSamplerslide2.jpg?v=1787053677&width=600",
-    "category": "trial-packs",
-    "format": "Sampler",
-    "region": "India",
-    "caffeine": "Medium",
-    "badge": "",
-    "inStock": true
-  },
-  {
     "id": "wonder-spring-darjeeling-white-tea",
     "handle": "wonder-spring-darjeeling-white-tea",
     "title": "Darjeeling Special Spring White",
