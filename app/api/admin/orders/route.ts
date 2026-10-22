@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllOrders, saveOrder, StoredOrderData } from "@/lib/ordersDb";
 import { verifyAdminRequest } from "@/lib/auth";
+import { orderCreationSchema, cleanIndianPhone } from "@/lib/validations/checkout";
+import { sendOrderConfirmationEmail } from "@/lib/email";
 
 export async function GET(req: NextRequest) {
   try {
@@ -49,17 +51,29 @@ export async function GET(req: NextRequest) {
 // Storefront Checkout calls this to persist real orders into PostgreSQL
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const rawBody = await req.json();
 
-    if (!body.orderNumber || !body.customerName || !body.customerPhone || !body.totalAmount) {
+    // Sanitize phone from autofill (+91 or leading 0s)
+    if (rawBody.customerPhone) {
+      rawBody.customerPhone = cleanIndianPhone(String(rawBody.customerPhone));
+    }
+
+    // Validate incoming payload with Zod
+    const validationResult = orderCreationSchema.safeParse(rawBody);
+    if (!validationResult.success) {
       return NextResponse.json(
-        { error: "Missing required order fields" },
+        {
+          error: "Invalid order data format",
+          details: validationResult.error.format(),
+        },
         { status: 400 }
       );
     }
 
+    const body = validationResult.data;
+
     const saved = await saveOrder({
-      id: body.id || body.orderNumber,
+      id: rawBody.id || body.orderNumber,
       orderNumber: body.orderNumber,
       customerName: body.customerName,
       customerPhone: body.customerPhone,
@@ -69,19 +83,36 @@ export async function POST(req: NextRequest) {
       state: body.state,
       pincode: body.pincode,
       landmark: body.landmark || null,
-      subtotal: Number(body.subtotal) || Number(body.totalAmount),
-      discountAmount: Number(body.discountAmount) || 0,
+      subtotal: body.subtotal,
+      discountAmount: body.discountAmount,
       couponCode: body.couponCode || null,
-      shippingFee: Number(body.shippingFee) || 0,
-      codFee: Number(body.codFee) || 0,
-      totalAmount: Number(body.totalAmount),
-      paymentMethod: body.paymentMethod || "upi",
-      paymentStatus: body.paymentStatus || (body.paymentMethod === "cod" ? "PENDING" : "PAID"),
-      orderStatus: body.orderStatus || "PROCESSING",
+      shippingFee: body.shippingFee,
+      codFee: body.codFee,
+      totalAmount: body.totalAmount,
+      paymentMethod: body.paymentMethod,
+      paymentStatus: body.paymentStatus,
+      orderStatus: body.orderStatus,
       utrNumber: body.utrNumber || null,
       notes: body.notes || null,
-      items: Array.isArray(body.items) ? body.items : [],
+      items: body.items,
     });
+
+    // Send order confirmation email asynchronously
+    if (body.customerEmail) {
+      sendOrderConfirmationEmail({
+        orderNumber: body.orderNumber,
+        customerName: body.customerName,
+        customerEmail: body.customerEmail,
+        items: body.items,
+        totalAmount: body.totalAmount,
+        paymentMethod: body.paymentMethod,
+        paymentStatus: body.paymentStatus,
+        address: body.address,
+        city: body.city,
+        state: body.state,
+        pincode: body.pincode,
+      }).catch((e) => console.warn("Email dispatch error:", e));
+    }
 
     return NextResponse.json({
       status: "success",

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { motion, AnimatePresence } from "motion/react";
 import { useCart } from "./context/CartContext";
 import { Search, X, ArrowRight } from "lucide-react";
 
@@ -76,8 +77,6 @@ export default function SearchDrawer() {
   const { isSearchOpen, closeSearch, addToCart } = useCart();
   const [query, setQuery] = useState("");
 
-  if (!isSearchOpen) return null;
-
   const popularKeywords = [
     "Kadak Chai",
     "Darjeeling",
@@ -97,16 +96,27 @@ export default function SearchDrawer() {
     : [];
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden animate-in fade-in duration-200">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 transition-opacity"
-        onClick={closeSearch}
-      />
+    <AnimatePresence>
+      {isSearchOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden">
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
+            onClick={closeSearch}
+          />
 
-      {/* Drawer */}
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-        <div className="w-screen max-w-[460px] bg-white shadow-2xl flex flex-col justify-between overflow-hidden border-l border-[#e7e2d8]">
+          {/* Drawer */}
+          <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 28, stiffness: 280 }}
+              className="w-screen max-w-[460px] bg-white shadow-2xl flex flex-col justify-between overflow-hidden border-l border-[#e7e2d8]"
+            >
           {/* Search Header */}
           <div className="p-5 border-b border-[#e7e2d8] flex items-center gap-3 bg-white">
             <Search size={22} className="text-[#5c5a52] flex-shrink-0" />
@@ -271,8 +281,10 @@ export default function SearchDrawer() {
           <div className="p-4 border-t border-[#e7e2d8] bg-[#fafafa] text-center text-[12px] text-[#5c5a52]">
             Free express delivery on all orders above ₹399
           </div>
+            </motion.div>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </AnimatePresence>
   );
 }

@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { cleanIndianPhone } from "@/lib/validations/checkout";
 import {
   Gift,
   Building2,
@@ -32,10 +33,21 @@ export default function CorporateGiftingPage() {
   const [message, setMessage] = useState("");
   const [formSubmitted, setFormSubmitted] = useState(false);
 
+  // Automatically sanitize autofilled phone numbers (+91 or leading 0)
+  useEffect(() => {
+    if (phone) {
+      const cleaned = cleanIndianPhone(phone);
+      if (cleaned !== phone) {
+        setPhone(cleaned);
+      }
+    }
+  }, [phone]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !phone) {
-      alert("Please complete the required contact fields");
+    const cleanPhone = cleanIndianPhone(phone);
+    if (!name || !email || !cleanPhone || cleanPhone.length < 10) {
+      alert("Please enter a valid 10-digit Indian mobile number");
       return;
     }
     setFormSubmitted(true);
@@ -556,8 +568,15 @@ export default function CorporateGiftingPage() {
                         type="tel"
                         required
                         value={phone}
-                        onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                        placeholder="10 digit mobile number"
+                        onChange={(e) => setPhone(cleanIndianPhone(e.target.value))}
+                        onPaste={(e) => {
+                          const pasted = e.clipboardData.getData("text");
+                          if (pasted) {
+                            e.preventDefault();
+                            setPhone(cleanIndianPhone(pasted));
+                          }
+                        }}
+                        placeholder="10-digit mobile number"
                         className="flex-1 px-3 py-2.5 text-[14px] outline-none"
                       />
                     </div>

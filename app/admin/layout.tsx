@@ -68,15 +68,6 @@ export default function AdminLayout({
     return <>{children}</>;
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#0e1d15] flex flex-col items-center justify-center text-white">
-        <RefreshCw size={32} className="animate-spin text-[#02cb5a] mb-3" />
-        <p className="text-[14px] text-white/70">Verifying Teabox Admin Session...</p>
-      </div>
-    );
-  }
-
   const navItems = [
     {
       label: "Overview",
@@ -201,7 +192,13 @@ export default function AdminLayout({
       </aside>
 
       {/* Main Admin Content Stage */}
-      <main className="flex-1 min-w-0 overflow-y-auto">
+      <main className="flex-1 min-w-0 overflow-y-auto relative">
+        {loading && (
+          <div className="absolute inset-0 z-50 bg-[#0e1d15] flex flex-col items-center justify-center text-white min-h-[400px]">
+            <RefreshCw size={32} className="animate-spin text-[#02cb5a] mb-3" />
+            <p className="text-[14px] text-white/70">Verifying Teabox Admin Session...</p>
+          </div>
+        )}
         {children}
       </main>
     </div>

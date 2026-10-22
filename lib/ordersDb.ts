@@ -1,5 +1,6 @@
 import { prisma, isDatabaseConnected } from "./prisma";
 import { PRODUCTS, Product } from "@/data/products";
+import { cleanIndianPhone } from "./validations/checkout";
 
 export interface StoredOrderData {
   id: string;
@@ -99,7 +100,7 @@ if (!globalForOrders.inMemoryOrders) {
       paymentStatus: "PENDING",
       orderStatus: "SHIPPED",
       trackingNumber: "CP-IND-8849201",
-      trackingUrl: "https://teabox.clickpost.in/en?tracking_id=CP-IND-8849201",
+      trackingUrl: "/track?tracking_id=CP-IND-8849201",
       items: [
         {
           title: "Abhay Ras Chai",
@@ -132,7 +133,7 @@ if (!globalForOrders.inMemoryOrders) {
       orderStatus: "DELIVERED",
       utrNumber: "428799112233",
       trackingNumber: "CP-IND-7729104",
-      trackingUrl: "https://teabox.clickpost.in/en?tracking_id=CP-IND-7729104",
+      trackingUrl: "/track?tracking_id=CP-IND-7729104",
       items: [
         {
           title: "Organic Darjeeling Green Tea",
@@ -283,3 +284,93 @@ export async function updateOrderStatus(
 
   return globalForOrders.inMemoryOrders?.get(orderId) || null;
 }
+
+/**
+ * Fetch a single order by ID or orderNumber
+ */
+export async function getOrderById(idOrNumber: string): Promise<StoredOrderData | null> {
+  // Check PostgreSQL first if connected
+  try {
+    const isDbUp = await isDatabaseConnected();
+    if (isDbUp) {
+      const order = await prisma.order.findFirst({
+        where: {
+          OR: [{ id: idOrNumber }, { orderNumber: idOrNumber }],
+        },
+        include: { items: true, payments: true },
+      });
+      if (order) {
+        return order as unknown as StoredOrderData;
+      }
+    }
+  } catch (err) {
+    console.warn("PostgreSQL order lookup warning (checking memory store):", err);
+  }
+
+  // Check in-memory store
+  if (globalForOrders.inMemoryOrders) {
+    if (globalForOrders.inMemoryOrders.has(idOrNumber)) {
+      return globalForOrders.inMemoryOrders.get(idOrNumber)!;
+    }
+    for (const ord of globalForOrders.inMemoryOrders.values()) {
+      if (ord.orderNumber === idOrNumber || ord.id === idOrNumber) {
+        return ord;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Search/lookup orders by Order Number, Tracking ID, or Phone number
+ */
+export async function searchOrders(query: string): Promise<StoredOrderData[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  const cleanPhone = cleanIndianPhone(q);
+
+  // Check PostgreSQL first if connected
+  try {
+    const isDbUp = await isDatabaseConnected();
+    if (isDbUp) {
+      const orders = await prisma.order.findMany({
+        where: {
+          OR: [
+            { id: { equals: q, mode: "insensitive" } },
+            { orderNumber: { equals: q, mode: "insensitive" } },
+            { trackingNumber: { equals: q, mode: "insensitive" } },
+            ...(cleanPhone && cleanPhone.length >= 6 ? [{ customerPhone: { contains: cleanPhone } }] : []),
+          ],
+        },
+        include: { items: true, payments: true },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      });
+      if (orders && orders.length > 0) {
+        return orders as unknown as StoredOrderData[];
+      }
+    }
+  } catch (err) {
+    console.warn("PostgreSQL order search warning:", err);
+  }
+
+  // Check in-memory store
+  if (globalForOrders.inMemoryOrders) {
+    const matched: StoredOrderData[] = [];
+    const qLower = q.toLowerCase();
+    for (const ord of globalForOrders.inMemoryOrders.values()) {
+      const matchId = ord.id.toLowerCase() === qLower || ord.orderNumber.toLowerCase() === qLower;
+      const matchTracking = ord.trackingNumber?.toLowerCase() === qLower;
+      const matchPhone = cleanPhone && cleanPhone.length >= 6 && ord.customerPhone.includes(cleanPhone);
+      if (matchId || matchTracking || matchPhone) {
+        matched.push(ord);
+      }
+    }
+    return matched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  return [];
+}
+

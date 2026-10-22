@@ -2,6 +2,8 @@
 
 import React, { useState } from "react";
 import Image from "next/image";
+import { toast } from "sonner";
+import { motion, AnimatePresence } from "motion/react";
 import {
   Star,
   Check,
@@ -175,11 +177,15 @@ export default function ProductReviews({
         return r;
       })
     );
+    toast.success(type === "up" ? "Marked as helpful" : "Feedback recorded");
   };
 
   const handleWriteReviewSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName || !newTitle || !newComment) return;
+    if (!newName || !newTitle || !newComment) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
 
     const newRev: Review = {
       id: `rev-${Date.now()}`,
@@ -198,6 +204,10 @@ export default function ProductReviews({
 
     setReviews([newRev, ...reviews]);
     setSubmittedMessage(true);
+    toast.success("Review Submitted!", {
+      description: "Thank you for sharing your tea tasting notes.",
+    });
+
     setTimeout(() => {
       setSubmittedMessage(false);
       setIsWriteModalOpen(false);
@@ -380,6 +390,7 @@ export default function ProductReviews({
                   src={src}
                   alt={`Customer Photo ${idx + 1}`}
                   fill
+                  sizes="96px"
                   className="object-cover group-hover:scale-105 transition-transform duration-300"
                 />
               </div>
@@ -457,6 +468,7 @@ export default function ProductReviews({
                     src={rev.photoUrl}
                     alt={rev.title}
                     fill
+                    sizes="80px"
                     className="object-cover"
                   />
                 </div>
@@ -517,6 +529,7 @@ export default function ProductReviews({
               src={selectedPhotoModal}
               alt="Customer Review Photo"
               fill
+              sizes="(max-width: 768px) 90vw, 600px"
               className="object-contain"
             />
           </div>

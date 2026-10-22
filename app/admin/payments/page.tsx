@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { toast } from "sonner";
 import {
   CreditCard,
   CheckCircle2,
@@ -56,6 +57,9 @@ export default function AdminPaymentsPage() {
   const handleCopyVpa = () => {
     navigator.clipboard.writeText("8617513004@ptaxis");
     setCopiedVpa(true);
+    toast.success("Merchant UPI ID copied", {
+      description: "8617513004@ptaxis",
+    });
     setTimeout(() => setCopiedVpa(false), 2000);
   };
 

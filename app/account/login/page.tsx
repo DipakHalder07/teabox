@@ -4,7 +4,14 @@ import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { X, Check, ArrowRight, ShieldCheck, Mail, Lock, Phone } from "lucide-react";
+import { toast } from "sonner";
 import SiteLayoutWrapper from "@/components/SiteLayoutWrapper";
+import {
+  fastrrOtpSchema,
+  customerLoginSchema,
+  customerRegisterSchema,
+} from "@/lib/validations/account";
+import { cleanIndianPhone } from "@/lib/validations/checkout";
 
 export default function LoginPage() {
   // Mode: "fastrr" (the Shiprocket 1-click modal overlay), "password" (traditional email/password), "register", "forgot"
@@ -25,14 +32,33 @@ export default function LoginPage() {
   const [registerSuccess, setRegisterSuccess] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
 
+  // Automatically clean mobile number when browser autofills (+91, 91, or leading 0s)
+  React.useEffect(() => {
+    if (mobileNumber) {
+      const cleaned = cleanIndianPhone(mobileNumber);
+      if (cleaned !== mobileNumber) {
+        setMobileNumber(cleaned);
+      }
+    }
+  }, [mobileNumber]);
+
   // Handle Fastrr OTP submission
   const handleSendOtp = (e: React.FormEvent) => {
     e.preventDefault();
-    if (mobileNumber.length === 10) {
-      setOtpSent(true);
-    } else {
-      alert("Please enter a valid 10-digit mobile number");
+    const cleanPhone = cleanIndianPhone(mobileNumber);
+    setMobileNumber(cleanPhone);
+    const result = fastrrOtpSchema.safeParse({ phone: cleanPhone });
+    if (!result.success) {
+      toast.error("Invalid mobile number", {
+        description: "Please enter a valid 10-digit Indian mobile number",
+      });
+      return;
     }
+
+    setOtpSent(true);
+    toast.success("OTP Sent!", {
+      description: `4-digit verification code sent to +91 ${cleanPhone}`,
+    });
   };
 
   const handleVerifyOtp = (e: React.FormEvent) => {
@@ -42,22 +68,45 @@ export default function LoginPage() {
       setIsVerifying(false);
       setIsLoggedIn(true);
       setLoggedInUser(`+91 ${mobileNumber}`);
-    }, 800);
+      toast.success("Welcome back!", {
+        description: `Logged in as +91 ${mobileNumber}`,
+      });
+    }, 600);
   };
 
   const handlePasswordLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    const result = customerLoginSchema.safeParse({ email, password });
+    if (!result.success) {
+      toast.error("Login failed", {
+        description: result.error.issues[0]?.message || "Please check your credentials.",
+      });
+      return;
+    }
+
     setIsLoggedIn(true);
     setLoggedInUser(email);
+    toast.success("Welcome back!", {
+      description: `Logged in as ${email}`,
+    });
   };
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
+    const result = customerRegisterSchema.safeParse({ name, email, password });
+    if (!result.success) {
+      toast.error("Registration incomplete", {
+        description: result.error.issues[0]?.message || "Please fill all required fields.",
+      });
+      return;
+    }
+
     setRegisterSuccess(true);
+    toast.success("Account created successfully!");
     setTimeout(() => {
       setIsLoggedIn(true);
       setLoggedInUser(name || email);
-    }, 1000);
+    }, 800);
   };
 
   return (
@@ -99,7 +148,7 @@ export default function LoginPage() {
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-[#5c5a52]">Order History</span>
-                <Link href="https://teabox.clickpost.in/en" target="_blank" className="font-bold text-[#1f3a2c] underline">
+                <Link href="/track" className="font-bold text-[#1f3a2c] underline">
                   Track Past Orders →
                 </Link>
               </div>
@@ -150,6 +199,7 @@ export default function LoginPage() {
                     alt="Teabox"
                     width={130}
                     height={34}
+                    style={{ width: "auto" }}
                     className="h-8 w-auto object-contain"
                   />
                 </div>
@@ -176,7 +226,14 @@ export default function LoginPage() {
                         required
                         autoFocus
                         value={mobileNumber}
-                        onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                        onChange={(e) => setMobileNumber(cleanIndianPhone(e.target.value))}
+                        onPaste={(e) => {
+                          const pasted = e.clipboardData.getData("text");
+                          if (pasted) {
+                            e.preventDefault();
+                            setMobileNumber(cleanIndianPhone(pasted));
+                          }
+                        }}
                         placeholder="10-digit mobile number"
                         className="flex-1 px-3 py-3 text-[14px] outline-none text-[#202020]"
                       />

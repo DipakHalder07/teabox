@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { toast } from "sonner";
 import {
   Search,
   Filter,
@@ -70,9 +71,11 @@ export default function AdminOrdersPage() {
         if (activeOrder?.id === orderId) {
           setActiveOrder((prev) => (prev ? { ...prev, ...data.order } : null));
         }
+        toast.success(`Order ${orderId} updated to ${newStatus}`);
       }
     } catch (err) {
       console.error("Status update error:", err);
+      toast.error("Failed to update order status");
     } finally {
       setIsUpdating(false);
     }
@@ -449,13 +452,13 @@ export default function AdminOrdersPage() {
                     const tracking = `CP-IND-${Math.floor(1000000 + Math.random() * 9000000)}`;
                     handleUpdateStatus(activeOrder.id, "SHIPPED", {
                       trackingNumber: tracking,
-                      trackingUrl: `https://teabox.clickpost.in/en?tracking_id=${tracking}`,
+                      trackingUrl: `/track?tracking_id=${tracking}`,
                     });
                   }}
                   className="flex-1 bg-[#1f3a2c] hover:bg-[#016c2f] text-white py-2.5 px-4 rounded-xl font-bold text-[13px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Truck size={16} />
-                  <span>Mark as Shipped (Generate Clickpost)</span>
+                  <span>Mark as Shipped (Assign Tracking AWB)</span>
                 </button>
               )}
 
