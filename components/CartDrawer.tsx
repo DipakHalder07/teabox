@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useCart } from "./context/CartContext";
 import { X, Trash2, Plus, Minus, Check, ShoppingBag, ArrowRight } from "lucide-react";
 import FastrrCheckoutModal from "./FastrrCheckoutModal";
@@ -16,13 +17,13 @@ export default function CartDrawer() {
     totalCount,
     subtotal,
     freeShippingThreshold,
+    isCheckoutOpen,
+    openCheckout,
+    closeCheckout,
   } = useCart();
 
   const [orderNote, setOrderNote] = useState("");
   const [showNoteInput, setShowNoteInput] = useState(false);
-  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
-
-  if (!isCartOpen) return null;
 
   const diffToFreeShipping = Math.max(0, freeShippingThreshold - subtotal);
   const progressPercent = Math.min(
@@ -30,17 +31,15 @@ export default function CartDrawer() {
     Math.round((subtotal / freeShippingThreshold) * 100)
   );
 
-  const handleCheckout = () => {
-    setIsCheckoutModalOpen(true);
-  };
-
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden animate-in fade-in duration-200">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 transition-opacity"
-        onClick={closeCart}
-      />
+    <>
+      {isCartOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden animate-in fade-in duration-200">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50 transition-opacity"
+            onClick={closeCart}
+          />
 
       {/* Drawer */}
       <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
@@ -203,33 +202,36 @@ export default function CartDrawer() {
                 Tax included. Free express shipping on all prepaid orders.
               </p>
 
-              {/* Fastrr Green Checkout Button */}
-              <button
-                type="button"
-                onClick={handleCheckout}
-                className="w-full bg-[#02cb5a] hover:bg-[#01b850] text-[#1f3a2c] py-3.5 px-4 rounded-lg font-bold text-[16px] tracking-wider uppercase flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer active:scale-99"
+              {/* Fastrr Green Checkout Button linking to dedicated /checkout page */}
+              <Link
+                href="/checkout"
+                onClick={() => closeCart()}
+                className="w-full bg-[#02cb5a] hover:bg-[#01b850] text-[#1f3a2c] py-3.5 px-4 rounded-lg font-bold text-[16px] tracking-wider uppercase flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer active:scale-99 text-center"
               >
-                <span>BUY NOW — ₹{subtotal}</span>
+                <span>PROCEED TO CHECKOUT — ₹{subtotal}</span>
                 <ArrowRight size={18} />
-              </button>
+              </Link>
 
               {/* Payment Trust Badges */}
-              <div className="text-center text-[11px] text-[#747576] font-medium pt-1">
-                UPI · Google Pay · PhonePe · Cards · NetBanking · COD
+              <div className="flex flex-col items-center gap-1 text-[11px] text-[#747576] font-medium pt-1">
+                <span className="text-[#016c2f] font-semibold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#02cb5a]" />
+                  Instant UPI &amp; Cash on Delivery Available
+                </span>
+                <span>Google Pay · PhonePe · Paytm · CRED · Cash on Delivery (COD)</span>
               </div>
             </div>
           )}
         </div>
       </div>
-
-      {/* Headless Fastrr Checkout Modal */}
-      <FastrrCheckoutModal
-        isOpen={isCheckoutModalOpen}
-        onClose={() => {
-          setIsCheckoutModalOpen(false);
-          closeCart();
-        }}
-      />
     </div>
+  )}
+
+  {/* Headless Fastrr Checkout Modal with YouPI-PG (accessible anywhere) */}
+  <FastrrCheckoutModal
+    isOpen={isCheckoutOpen}
+    onClose={closeCheckout}
+  />
+</>
   );
 }

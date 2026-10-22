@@ -15,10 +15,13 @@ interface CartContextType {
   cartItems: CartItem[];
   isCartOpen: boolean;
   isSearchOpen: boolean;
+  isCheckoutOpen: boolean;
   openCart: () => void;
   closeCart: () => void;
   openSearch: () => void;
   closeSearch: () => void;
+  openCheckout: () => void;
+  closeCheckout: () => void;
   addToCart: (item: Omit<CartItem, "quantity">, quantity?: number) => void;
   removeFromCart: (id: string) => void;
   updateQuantity: (id: string, delta: number) => void;
@@ -43,11 +46,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   ]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
   const openCart = () => setIsCartOpen(true);
   const closeCart = () => setIsCartOpen(false);
   const openSearch = () => setIsSearchOpen(true);
   const closeSearch = () => setIsSearchOpen(false);
+  const openCheckout = () => {
+    setIsCartOpen(false);
+    setIsCheckoutOpen(true);
+  };
+  const closeCheckout = () => setIsCheckoutOpen(false);
 
   const addToCart = (item: Omit<CartItem, "quantity">, quantity = 1) => {
     setCartItems((prev) => {
@@ -97,10 +106,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         cartItems,
         isCartOpen,
         isSearchOpen,
+        isCheckoutOpen,
         openCart,
         closeCart,
         openSearch,
         closeSearch,
+        openCheckout,
+        closeCheckout,
         addToCart,
         removeFromCart,
         updateQuantity,

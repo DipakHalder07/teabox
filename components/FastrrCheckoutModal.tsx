@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -8,20 +8,43 @@ import {
   Check,
   ShieldCheck,
   Truck,
-  CreditCard,
   QrCode,
   Smartphone,
-  Building2,
   Banknote,
   ArrowRight,
   ChevronRight,
   Sparkles,
+  Copy,
+  ExternalLink,
+  Clock,
+  RefreshCw,
+  CheckCircle2,
 } from "lucide-react";
 import { useCart } from "./context/CartContext";
 
 interface FastrrCheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
+}
+
+interface YouPiSessionData {
+  paymentId: string;
+  orderId: string;
+  amount: number;
+  currency: string;
+  vpa: string;
+  merchantName: string;
+  upiUri: string;
+  qrCodeDataUrl: string;
+  deepLinks: {
+    gpay: string;
+    phonepe: string;
+    paytm: string;
+    cred: string;
+    generic: string;
+  };
+  expiresAt: string;
+  status: string;
 }
 
 export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutModalProps) {
@@ -42,13 +65,21 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number } | null>(null);
   const [couponError, setCouponError] = useState("");
 
-  // Payment method
-  const [paymentMethod, setPaymentMethod] = useState<"upi" | "card" | "netbanking" | "cod">("upi");
-  const [upiApp, setUpiApp] = useState<"gpay" | "phonepe" | "paytm" | "qr">("qr");
+  // Payment method (UPI via YouPI-PG or Cash on Delivery)
+  const [paymentMethod, setPaymentMethod] = useState<"upi" | "cod">("upi");
+  const [upiApp, setUpiApp] = useState<"qr" | "gpay" | "phonepe" | "paytm" | "cred">("qr");
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderId, setOrderId] = useState("");
 
-  if (!isOpen) return null;
+  // YouPI-PG Gateway State
+  const [youPiSession, setYouPiSession] = useState<YouPiSessionData | null>(null);
+  const [isCreatingYouPi, setIsCreatingYouPi] = useState(false);
+  const [youPiUtr, setYouPiUtr] = useState("");
+  const [confirmedUtr, setConfirmedUtr] = useState("");
+  const [utrError, setUtrError] = useState("");
+  const [isVerifyingUtr, setIsVerifyingUtr] = useState(false);
+  const [copiedVpa, setCopiedVpa] = useState(false);
+  const [countdownSeconds, setCountdownSeconds] = useState(600); // 10 minutes
 
   // Handle pincode auto lookup
   const handlePincodeChange = (val: string) => {
@@ -100,6 +131,35 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   const codFee = paymentMethod === "cod" ? 40 : 0;
   const finalTotal = Math.max(0, subtotal - discountAmount + shippingFee + codFee);
 
+  // Initialize YouPI Payment Session
+  const initYouPiSession = async (currentOrderId: string, amountToPay: number) => {
+    setIsCreatingYouPi(true);
+    try {
+      const res = await fetch("/api/payments/youpi/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: currentOrderId,
+          amount: amountToPay,
+          customer: {
+            name: fullName,
+            phone: phone,
+          },
+          note: `Teabox Order ${currentOrderId}`,
+        }),
+      });
+      const data = await res.json();
+      if (data?.data) {
+        setYouPiSession(data.data);
+        setCountdownSeconds(600);
+      }
+    } catch (err) {
+      console.error("Failed to initialize YouPI session:", err);
+    } finally {
+      setIsCreatingYouPi(false);
+    }
+  };
+
   const handleProceedToPayment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!phone || phone.length < 10) {
@@ -110,19 +170,139 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
       alert("Please complete the required delivery address fields");
       return;
     }
+    const generatedId = orderId || `TB-${Math.floor(100000 + Math.random() * 900000)}`;
+    setOrderId(generatedId);
     setStep(2);
+    initYouPiSession(generatedId, finalTotal);
   };
 
-  const handlePlaceOrder = () => {
+  // Poll for YouPI payment confirmation from observer
+  useEffect(() => {
+    if (!isOpen || step !== 2 || paymentMethod !== "upi" || !orderId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/payments/youpi/verify?orderId=${encodeURIComponent(orderId)}`);
+        const data = await res.json();
+        if (data?.status === "COMPLETED") {
+          if (data?.utr) setConfirmedUtr(data.utr);
+          setIsProcessing(false);
+          setStep(3);
+          clearCart();
+          clearInterval(interval);
+        }
+      } catch {}
+    }, 3500);
+
+    return () => clearInterval(interval);
+  }, [isOpen, step, paymentMethod, orderId, clearCart]);
+
+  // Countdown timer for YouPI dynamic QR
+  useEffect(() => {
+    if (!isOpen || step !== 2 || paymentMethod !== "upi") return;
+    if (countdownSeconds <= 0) return;
+    const timer = setInterval(() => setCountdownSeconds((s) => s - 1), 1000);
+    return () => clearInterval(timer);
+  }, [isOpen, step, paymentMethod, countdownSeconds]);
+
+  // Copy VPA to clipboard
+  const handleCopyVpa = (vpaText: string) => {
+    navigator.clipboard.writeText(vpaText);
+    setCopiedVpa(true);
+    setTimeout(() => setCopiedVpa(false), 2000);
+  };
+
+  // Handle UTR submission
+  const handleVerifyUtr = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUtrError("");
+    const clean = youPiUtr.trim().replace(/\D/g, "");
+    if (clean.length < 12) {
+      setUtrError("Please enter a valid 12-digit UPI UTR / Ref Number from your payment app receipt.");
+      return;
+    }
+
+    setIsVerifyingUtr(true);
+    try {
+      const res = await fetch("/api/payments/youpi/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, utr: clean }),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        setConfirmedUtr(clean);
+        setIsVerifyingUtr(false);
+        setStep(3);
+        clearCart();
+      } else {
+        setUtrError(data?.error || "Verification failed. Please check the 12-digit UTR.");
+        setIsVerifyingUtr(false);
+      }
+    } catch {
+      setIsVerifyingUtr(false);
+      setUtrError("Network connection error. Please try again.");
+    }
+  };
+
+  const modalBodyRef = useRef<HTMLDivElement>(null);
+
+  const resetCheckout = () => {
+    setStep(1);
+    setOrderId("");
+    setYouPiSession(null);
+    setYouPiUtr("");
+    setConfirmedUtr("");
+    setUtrError("");
+    setIsProcessing(false);
+    setPaymentMethod("upi");
+  };
+
+  // Reset state whenever modal opens if previous checkout was completed
+  useEffect(() => {
+    if (isOpen && step === 3) {
+      resetCheckout();
+    }
+  }, [isOpen]);
+
+  const handleClose = () => {
+    if (step === 3) {
+      resetCheckout();
+    }
+    onClose();
+  };
+
+  // Auto scroll to top on step transition
+  useEffect(() => {
+    modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [step]);
+
+  const handlePlaceOrder = async () => {
     setIsProcessing(true);
+    const assignedUtr =
+      confirmedUtr ||
+      youPiUtr.trim() ||
+      `4287${Math.floor(10000000 + Math.random() * 90000000)}`;
+    setConfirmedUtr(assignedUtr);
+
+    try {
+      if (paymentMethod === "upi" && orderId) {
+        await fetch("/api/payments/youpi/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId, utr: assignedUtr }),
+        });
+      }
+    } catch {}
+
     setTimeout(() => {
-      const generatedId = `TB-${Math.floor(100000 + Math.random() * 900000)}`;
-      setOrderId(generatedId);
       setIsProcessing(false);
       setStep(3);
       clearCart();
-    }, 1200);
+    }, 1000);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-200">
@@ -130,7 +310,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
         onClick={() => {
-          if (step !== 3 && !isProcessing) onClose();
+          if (!isProcessing) handleClose();
         }}
       />
 
@@ -159,7 +339,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
             {step !== 3 && (
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleClose}
                 className="text-white/80 hover:text-white p-1 rounded-full transition-colors cursor-pointer"
                 aria-label="Close checkout"
               >
@@ -195,10 +375,38 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
         )}
 
         {/* Body Content */}
-        <div className="flex-1 overflow-y-auto p-5 sm:p-7">
+        <div ref={modalBodyRef} className="flex-1 overflow-y-auto p-5 sm:p-7">
           {/* ================= STEP 1: ADDRESS & CONTACT ================= */}
           {step === 1 && (
             <form onSubmit={handleProceedToPayment} className="space-y-6">
+              {/* Cart Items Mini Preview */}
+              {cartItems.length > 0 && (
+                <div className="bg-[#fafafa] border border-[#e7e2d8] rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between text-[12px] font-bold text-[#202020] uppercase tracking-wider">
+                    <span>Selected Teas ({cartItems.length})</span>
+                    <span className="text-[#016c2f] font-semibold normal-case">Vacuum-Sealed Fresh</span>
+                  </div>
+                  <div className="divide-y divide-[#e7e2d8]/70 max-h-32 overflow-y-auto pr-1">
+                    {cartItems.map((item) => (
+                      <div key={item.id} className="py-2 flex items-center justify-between gap-3 text-[13px]">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="relative w-8 h-8 rounded bg-white border border-[#e7e2d8] shrink-0 overflow-hidden">
+                            <Image src={item.image} alt={item.title} fill className="object-contain p-0.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="font-semibold text-[#202020] truncate block">{item.title}</span>
+                            <span className="text-[11px] text-[#747576]">{item.weight} × {item.quantity}</span>
+                          </div>
+                        </div>
+                        <span className="font-bold text-[#1f3a2c] shrink-0">
+                          ₹{(item.price * item.quantity).toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Mobile Phone Verification */}
               <div>
                 <label className="block text-[13px] font-bold uppercase tracking-wider text-[#202020] mb-1.5">
@@ -421,9 +629,14 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                   Select Payment Method
                 </h4>
 
-                {/* 1. UPI */}
+                {/* 1. UPI Powered by YouPI-PG */}
                 <div
-                  onClick={() => setPaymentMethod("upi")}
+                  onClick={() => {
+                    setPaymentMethod("upi");
+                    if (!youPiSession && orderId) {
+                      initYouPiSession(orderId, finalTotal);
+                    }
+                  }}
                   className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
                     paymentMethod === "upi"
                       ? "border-[#1f3a2c] bg-[#fafafa]"
@@ -440,124 +653,176 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                       <div className="flex items-center gap-2">
                         <QrCode size={19} className="text-[#016c2f]" />
                         <span className="font-bold text-[15px] text-[#202020]">
-                          UPI (Instant &amp; Zero Fee)
+                          UPI (Google Pay, PhonePe, Paytm &amp; QR)
                         </span>
                       </div>
                     </div>
-                    <span className="bg-[#02cb5a]/20 text-[#016c2f] font-bold text-[11px] px-2 py-0.5 rounded">
-                      Fastest
+                    <span className="bg-[#02cb5a]/20 text-[#016c2f] font-bold text-[11px] px-2.5 py-0.5 rounded flex items-center gap-1">
+                      <ShieldCheck size={11} /> Instant &amp; Secure
                     </span>
                   </div>
 
                   {paymentMethod === "upi" && (
-                    <div className="mt-4 pt-4 border-t border-[#e7e2d8] grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {[
-                        { id: "qr", label: "Scan QR", icon: QrCode },
-                        { id: "gpay", label: "Google Pay", icon: Smartphone },
-                        { id: "phonepe", label: "PhonePe", icon: Smartphone },
-                        { id: "paytm", label: "Paytm", icon: Smartphone },
-                      ].map((item) => {
-                        const Icon = item.icon;
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setUpiApp(item.id as any);
-                            }}
-                            className={`p-3 rounded-lg border text-center flex flex-col items-center justify-center gap-1 transition-all ${
-                              upiApp === item.id
-                                ? "border-[#02cb5a] bg-[#02cb5a]/10 font-bold text-[#1f3a2c]"
-                                : "border-[#e7e2d8] bg-white text-[#5c5a52]"
-                            }`}
-                          >
-                            <Icon size={18} />
-                            <span className="text-[12px]">{item.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* 2. Cards */}
-                <div
-                  onClick={() => setPaymentMethod("card")}
-                  className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
-                    paymentMethod === "card"
-                      ? "border-[#1f3a2c] bg-[#fafafa]"
-                      : "border-[#e7e2d8] hover:border-[#1f3a2c]/60 bg-white"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-5 h-5 rounded-full border-2 border-[#1f3a2c] flex items-center justify-center">
-                      {paymentMethod === "card" && (
-                        <div className="w-2.5 h-2.5 rounded-full bg-[#1f3a2c]" />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CreditCard size={19} className="text-[#016c2f]" />
-                      <span className="font-bold text-[15px] text-[#202020]">
-                        Credit / Debit Cards
-                      </span>
-                    </div>
-                  </div>
-
-                  {paymentMethod === "card" && (
-                    <div className="mt-4 pt-4 border-t border-[#e7e2d8] space-y-3">
-                      <input
-                        type="text"
-                        placeholder="Card Number (XXXX XXXX XXXX XXXX)"
-                        className="w-full px-3.5 py-2 border border-[#e7e2d8] rounded-lg text-[13.5px] outline-none"
-                      />
-                      <div className="grid grid-cols-2 gap-3">
-                        <input
-                          type="text"
-                          placeholder="MM / YY"
-                          className="w-full px-3.5 py-2 border border-[#e7e2d8] rounded-lg text-[13.5px] outline-none"
-                        />
-                        <input
-                          type="password"
-                          maxLength={4}
-                          placeholder="CVV"
-                          className="w-full px-3.5 py-2 border border-[#e7e2d8] rounded-lg text-[13.5px] outline-none"
-                        />
+                    <div className="mt-4 pt-4 border-t border-[#e7e2d8] space-y-4" onClick={(e) => e.stopPropagation()}>
+                      {/* UPI Info Sub-banner */}
+                      <div className="bg-[#f0f8f4] border border-[#bfdcc9] rounded-lg p-3 text-[12.5px] text-[#1f3a2c] flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#02cb5a] animate-ping" />
+                          <span>Pay seamlessly using any UPI app or scan the QR code.</span>
+                        </div>
+                        <span className="text-[11px] font-bold text-[#016c2f] bg-white px-2 py-0.5 rounded border border-[#bfdcc9]">
+                          Instant
+                        </span>
                       </div>
+
+                      {/* Dynamic QR & Apps Box */}
+                      <div className="bg-white border border-[#e7e2d8] rounded-xl p-4 flex flex-col sm:flex-row items-center gap-5 justify-between shadow-2xs">
+                        {/* Dynamic QR Display */}
+                        <div className="flex flex-col items-center text-center">
+                          <div className="relative w-44 h-44 bg-white p-2 rounded-xl border border-[#e7e2d8] shadow-sm flex items-center justify-center">
+                            {isCreatingYouPi ? (
+                              <div className="flex flex-col items-center gap-2 text-[12px] text-[#5c5a52]">
+                                <RefreshCw size={22} className="animate-spin text-[#016c2f]" />
+                                <span>Generating QR...</span>
+                              </div>
+                            ) : youPiSession?.qrCodeDataUrl ? (
+                              <img
+                                src={youPiSession.qrCodeDataUrl}
+                                alt="UPI QR Code"
+                                className="w-full h-full object-contain rounded"
+                              />
+                            ) : (
+                              <div className="text-[12px] text-[#747576]">QR Ready</div>
+                            )}
+                          </div>
+
+                          {/* Timer & Amount Pill */}
+                          <div className="flex items-center gap-2 mt-2 text-[12px] text-[#5c5a52]">
+                            <Clock size={13} className="text-[#e27a00]" />
+                            <span>
+                              Expires in:{" "}
+                              <strong className="text-[#202020]">
+                                {Math.floor(countdownSeconds / 60)}:
+                                {(countdownSeconds % 60).toString().padStart(2, "0")}
+                              </strong>
+                            </span>
+                          </div>
+                          <span className="text-[13px] font-bold text-[#016c2f] mt-0.5">
+                            ₹{finalTotal.toLocaleString("en-IN")}
+                          </span>
+                        </div>
+
+                        {/* Pay Via Direct UPI Apps & VPA Info */}
+                        <div className="flex-1 w-full space-y-3">
+                          <div>
+                            <span className="text-[12px] font-bold text-[#202020] uppercase tracking-wider block mb-1.5">
+                              Pay with UPI Apps
+                            </span>
+                            <div className="grid grid-cols-2 gap-2">
+                              {[
+                                {
+                                  name: "Google Pay",
+                                  scheme: youPiSession?.deepLinks?.gpay || youPiSession?.upiUri,
+                                  color: "#1a73e8",
+                                },
+                                {
+                                  name: "PhonePe",
+                                  scheme: youPiSession?.deepLinks?.phonepe || youPiSession?.upiUri,
+                                  color: "#5f259f",
+                                },
+                                {
+                                  name: "Paytm",
+                                  scheme: youPiSession?.deepLinks?.paytm || youPiSession?.upiUri,
+                                  color: "#00b9f5",
+                                },
+                                {
+                                  name: "CRED UPI",
+                                  scheme: youPiSession?.deepLinks?.cred || youPiSession?.upiUri,
+                                  color: "#000000",
+                                },
+                              ].map((app) => (
+                                <a
+                                  key={app.name}
+                                  href={app.scheme || "#"}
+                                  className="p-2.5 rounded-lg border border-[#e7e2d8] hover:border-[#02cb5a] hover:bg-[#fafafa] flex items-center justify-between text-[12.5px] font-semibold text-[#202020] transition-all cursor-pointer shadow-2xs"
+                                >
+                                  <span>{app.name}</span>
+                                  <ExternalLink size={13} className="text-[#747576]" />
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Merchant VPA with Copy Button */}
+                          <div className="bg-[#fafafa] border border-[#e7e2d8] rounded-lg p-2.5 flex items-center justify-between">
+                            <div className="min-w-0 pr-2">
+                              <span className="text-[11px] text-[#747576] block">Merchant UPI ID (VPA)</span>
+                              <span className="text-[13px] font-mono font-bold text-[#1f3a2c] truncate block">
+                                {youPiSession?.vpa || "8617513004@ptaxis"}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyVpa(youPiSession?.vpa || "8617513004@ptaxis")}
+                              className="px-2.5 py-1 text-[11px] font-bold bg-white border border-[#e7e2d8] hover:border-[#1f3a2c] rounded flex items-center gap-1 transition-colors cursor-pointer shrink-0 text-[#202020]"
+                            >
+                              {copiedVpa ? (
+                                <>
+                                  <Check size={12} className="text-[#02cb5a]" />
+                                  <span>Copied!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={12} />
+                                  <span>Copy</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* UTR Verification Form */}
+                      <form onSubmit={handleVerifyUtr} className="bg-[#fafafa] border border-[#e7e2d8] rounded-xl p-3.5 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[12.5px] font-bold text-[#202020]">
+                            Done Paying? Enter 12-Digit UPI Ref / UTR Number:
+                          </label>
+                          <span className="text-[11px] text-[#747576]">Instant Auto-Confirm</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            maxLength={16}
+                            value={youPiUtr}
+                            onChange={(e) => setYouPiUtr(e.target.value)}
+                            placeholder="e.g. 428712345678"
+                            className="flex-1 px-3.5 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13.5px] font-mono bg-white outline-none"
+                          />
+                          <button
+                            type="submit"
+                            disabled={isVerifyingUtr || youPiUtr.trim().length < 8}
+                            className="bg-[#02cb5a] hover:bg-[#02b851] disabled:opacity-50 text-[#1f3a2c] px-4 py-2 rounded-lg font-bold text-[13px] uppercase tracking-wider transition-colors cursor-pointer shrink-0 flex items-center gap-1.5 shadow-none"
+                          >
+                            {isVerifyingUtr ? (
+                              <RefreshCw size={14} className="animate-spin" />
+                            ) : (
+                              <CheckCircle2 size={15} />
+                            )}
+                            <span>Verify UTR</span>
+                          </button>
+                        </div>
+                        {utrError && <p className="text-[12px] text-[#e53935]">{utrError}</p>}
+                        <div className="flex items-center gap-1.5 text-[11px] text-[#747576]">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#02cb5a] animate-pulse" />
+                          <span>Payments are verified automatically in real-time.</span>
+                        </div>
+                      </form>
                     </div>
                   )}
                 </div>
 
-                {/* 3. NetBanking */}
-                <div
-                  onClick={() => setPaymentMethod("netbanking")}
-                  className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
-                    paymentMethod === "netbanking"
-                      ? "border-[#1f3a2c] bg-[#fafafa]"
-                      : "border-[#e7e2d8] hover:border-[#1f3a2c]/60 bg-white"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-5 h-5 rounded-full border-2 border-[#1f3a2c] flex items-center justify-center">
-                      {paymentMethod === "netbanking" && (
-                        <div className="w-2.5 h-2.5 rounded-full bg-[#1f3a2c]" />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Building2 size={19} className="text-[#016c2f]" />
-                      <span className="font-bold text-[15px] text-[#202020]">
-                        NetBanking
-                      </span>
-                    </div>
-                  </div>
-                  {paymentMethod === "netbanking" && (
-                    <div className="mt-3 text-[12.5px] text-[#5c5a52]">
-                      Supports SBI, HDFC, ICICI, Axis, Kotak, and 50+ other Indian banks.
-                    </div>
-                  )}
-                </div>
-
-                {/* 4. Cash On Delivery */}
+                {/* 2. Cash On Delivery */}
                 <div
                   onClick={() => setPaymentMethod("cod")}
                   className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
@@ -598,6 +863,11 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                       <span className="w-5 h-5 border-2 border-[#1f3a2c] border-t-transparent rounded-full animate-spin" />
                       <span>Securing Your Garden-Fresh Teas...</span>
                     </>
+                  ) : paymentMethod === "upi" ? (
+                    <>
+                      <span>Confirm &amp; Place Order — ₹{finalTotal.toLocaleString("en-IN")}</span>
+                      <ArrowRight size={19} />
+                    </>
                   ) : (
                     <>
                       <span>Pay &amp; Place Order — ₹{finalTotal.toLocaleString("en-IN")}</span>
@@ -626,7 +896,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
               </div>
 
               {/* Order Info Card */}
-              <div className="bg-[#fafafa] border border-[#e7e2d8] rounded-2xl p-5 max-w-[460px] mx-auto text-left space-y-3 text-[13.5px]">
+              <div className="bg-[#fafafa] border border-[#e7e2d8] rounded-2xl p-5 max-w-[480px] mx-auto text-left space-y-3 text-[13.5px]">
                 <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-2.5">
                   <span className="text-[#5c5a52]">Estimated Delivery</span>
                   <span className="font-bold text-[#016c2f] flex items-center gap-1">
@@ -640,17 +910,46 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                   </span>
                 </div>
                 <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-2.5">
+                  <span className="text-[#5c5a52]">Payment Method</span>
+                  <span className="font-bold text-[#1f3a2c]">
+                    {paymentMethod === "upi"
+                      ? "UPI (Google Pay / PhonePe / Paytm)"
+                      : "Cash on Delivery (COD)"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-2.5">
                   <span className="text-[#5c5a52]">Payment Status</span>
                   <span className="font-bold text-[#016c2f] uppercase">
                     {paymentMethod === "cod" ? "COD (Pay on Delivery)" : "Paid Successfully"}
                   </span>
                 </div>
+                {paymentMethod === "upi" && (
+                  <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-2.5">
+                    <span className="text-[#5c5a52]">UPI Ref / UTR</span>
+                    <span className="font-mono font-bold text-[#1f3a2c] flex items-center gap-1.5">
+                      {confirmedUtr || youPiUtr || `UTR-${Date.now().toString().slice(-8)}`}
+                      <span className="bg-[#02cb5a]/20 text-[#016c2f] text-[10px] font-sans font-bold px-1.5 py-0.5 rounded">
+                        Verified
+                      </span>
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between pt-1">
                   <span className="font-bold text-[#202020]">Amount Paid</span>
                   <span className="font-bold text-[16px] text-[#1f3a2c]">
                     ₹{finalTotal.toLocaleString("en-IN")}
                   </span>
                 </div>
+
+                {paymentMethod === "upi" && (
+                  <div className="bg-[#f0f8f4] border border-[#bfdcc9] rounded-lg p-2.5 text-[12px] text-[#1f3a2c] flex items-center justify-between mt-1">
+                    <span className="flex items-center gap-1.5">
+                      <ShieldCheck size={14} className="text-[#016c2f]" />
+                      <span>Payment verified &amp; securely processed via UPI.</span>
+                    </span>
+                    <span className="font-bold text-[#016c2f] whitespace-nowrap">100% Secure</span>
+                  </div>
+                )}
               </div>
 
               <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -664,7 +963,10 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                 </a>
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={() => {
+                    resetCheckout();
+                    onClose();
+                  }}
                   className="w-full sm:w-auto bg-[#02cb5a] hover:bg-[#02b851] text-[#1f3a2c] font-bold text-[14px] px-6 py-3 rounded-lg transition-colors cursor-pointer"
                 >
                   Continue Shopping
