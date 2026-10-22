@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: 'TeaboxStencilMedium';
+  src: url('/fonts/Teabox_Stencil_Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TeaboxStencilRegular';
+  src: url('/fonts/Teabox_Stencil_Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --font-text: var(--font-poppins), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-heading: var(--font-poppins), sans-serif;
+  --font-stencil: TeaboxStencilMedium, var(--font-poppins), sans-serif;
+
+  --color-accent: #02cb5a;
+  --color-primary-text: #202020;
+  --color-secondary-text: #5c5a52;
+  --color-dark-green: #1f3a2c;
+  --color-light-bg: #fafafa;
+  --color-border: #e7e2d8;
+  --color-border-subtle: #eae6dd;
+  --color-footer-bg: #202020;
+  --color-footer-text: #c9d6cd;
+  --color-footer-tagline: #8fa396;
+  --color-amber: #f89028;
+
+  --tb-display: clamp(1.875rem, 4vw, 2.75rem);
+  --tb-section: clamp(1.375rem, 2.5vw, 1.875rem);
+  --tb-title: clamp(1.125rem, 2vw, 1.375rem);
+  --tb-meta: 0.9375rem;
+  --tb-badge: 0.8125rem;
+
+  --tb-tracking-button: 0.5px;
+  --tb-tracking-badge: 1px;
+  --tb-tracking-footer: 1.5px;
+  --tb-tracking-display: -0.4px;
+}
+
+body {
+  font-family: var(--font-text);
+  color: var(--color-primary-text);
+  background-color: #ffffff;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Stencil Font Heading Utility */
+.font-stencil {
+  font-family: var(--font-stencil);
+  letter-spacing: -0.3px;
+}
+
+/* Teabox Signature Buttons */
+.av-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 6px;
+  font-family: var(--font-text);
+  font-weight: 700;
+  letter-spacing: var(--tb-tracking-button);
+  text-decoration: none;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+}
+
+.av-btn-fill {
+  background-color: var(--color-accent);
+  color: var(--color-dark-green);
+}
+
+.av-btn-fill:hover {
+  background-color: #01b850;
+  transform: translateY(-1px);
+}
+
+.av-btn-outline {
+  background-color: transparent;
+  border-color: #1a1a18;
+  color: #1a1a18;
+}
+
+.av-btn-outline:hover {
+  background-color: #1a1a18;
+  color: #ffffff;
+}
+
+/* Teabox Underline with signature green */
+.av-hover-underline {
+  text-decoration: underline !important;
+  text-decoration-color: #02cb5a !important;
+  text-decoration-thickness: 2px !important;
+  text-underline-offset: 4px !important;
+}
+
+/* Subtle card lift */
+.av-hover-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.av-hover-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+}
+
+/* Zoom effect */
+.av-hover-zoom {
+  overflow: hidden;
+}
+
+.av-hover-zoom img {
+  transition: transform 0.35s ease;
+}
+
+.av-hover-zoom:hover img {
+  transform: scale(1.04);
+}
+
+/* Scrollbar hiding for horizontal scroll */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

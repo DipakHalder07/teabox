@@ -1,0 +1,235 @@
+<section id="shopify-section-template--27340373327960__av_promo_split_APaaT3" class="shopify-section shopify-section--av-promo-split"><style>
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split {
+    background: #fafafa;
+    padding: 16px 16px 0;
+    /* padding-block: 0 16px; */
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split__row {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card {
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid transparent;
+    transition: border-color 0.15s ease;
+  }
+
+  /* Border-only hover, matching the trial pack product cards — no lift, no shadow, no image zoom. */
+  @media screen and (pointer: fine) {
+    #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card--promo:hover {
+      border-color: #02cb5a;
+    }
+
+    #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card--quiz:hover {
+      border-color: #202020;
+    }
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card--promo {
+    position: relative;
+    background: #ffffff;
+    color: #202020;
+    border-color: #e7e2d8;
+  }
+
+  /* Whole promo card is clickable: the button's own link is stretched over the card (one link, no duplicate
+     for screen readers), so clicking the image or text goes to the button URL. */
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card--promo .av-btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card--promo:has(.av-btn) {
+    cursor: pointer;
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card__media {
+    background: #fafafa;
+    position: relative;
+    display: flex;
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card__badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: #02cb5a;
+    color: #1f3a2c;
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-size: var(--tb-badge);
+    font-weight: 700;
+    letter-spacing: var(--tb-tracking-badge);
+    z-index: 1;
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card__image {
+    width: 100%;
+    aspect-ratio: 752 / 480;
+    object-fit: cover;
+    display: block;
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card__body {
+    padding: 16px 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card__heading {
+    /* font-family: var(--section-heading-font-family); */
+    font-size: var(--tb-title);
+    font-weight: 700;
+    line-height: 1.2;
+    margin: 0;
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card__text {
+    font-family: var(--text-font-family);
+    font-size: var(--text-base);
+    line-height: 1.5;
+    color: #5c5a52;
+    margin: 0;
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card__body .av-btn {
+    margin-top: 4px;
+    padding: 13px;
+    font-size: var(--text-base);
+    letter-spacing: var(--tb-tracking-button);
+  }
+
+  /* Mobile: the promo card's heading, text and button are centred (desktop resets this below). */
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card__body :is(.av-split-card__heading, .av-split-card__text) {
+    text-align: center;
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card__body .av-btn {
+    align-self: stretch;
+    text-align: center;
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card--quiz {
+    background: #e8e8e8;
+    color: #202020;
+    padding: 20px 18px;
+    text-align: center;
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card--quiz .av-split-card__heading {
+    font-size: var(--tb-title);
+    color: #202020;
+  }
+
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card--quiz .av-split-card__text {
+    font-size: var(--text-base);
+    color: #3d3b36;
+    margin-top: 4px;
+  }
+
+  /* Full width on mobile; sized to its label on desktop (see below). */
+  #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card--quiz .av-btn {
+    display: block;
+    margin-top: 12px;
+    padding: 13px;
+    width: 100%;
+    font-size: var(--text-base);
+    letter-spacing: var(--tb-tracking-button);
+  }
+
+  @media screen and (min-width: 1000px) {
+    #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split {
+      padding: 0 64px 48px;
+      /* padding-block: 0 48px; */
+    }
+
+    #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split__row {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 24px;
+    }
+
+    #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card--promo {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card__image {
+      height: 100%;
+      aspect-ratio: auto;
+    }
+
+    #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card__body {
+      padding: 26px 28px;
+      justify-content: center;
+    }
+
+    #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card--quiz .av-split-card__heading {
+      font-size: var(--tb-title);
+    }
+
+    #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card__text {
+      font-size: var(--text-base);
+    }
+
+    #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card__body :is(.av-split-card__heading, .av-split-card__text) {
+      text-align: left;
+    }
+
+    #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card__body .av-btn {
+      align-self: flex-start;
+      padding: 13px 20px;
+    }
+
+    #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card--quiz {
+      padding: 28px;
+      display: flex;
+      gap: 10px;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    #shopify-section-template--27340373327960__av_promo_split_APaaT3 .av-split-card--quiz .av-btn {
+      padding: 14px;
+      width: fit-content;
+      margin-inline: auto;
+    }
+  }
+</style>
+
+<div class="av-split">
+  <div class="av-split__row">
+    <div class="av-split-card av-split-card--promo">
+      <div class="av-split-card__media"><span class="av-split-card__badge">WORLD&#39;S FIRST</span><img src="//in.teabox.com/cdn/shop/files/Premix_00.png?v=1791874029&amp;width=900" srcset="//in.teabox.com/cdn/shop/files/Premix_00.png?v=1791874029&amp;width=500 500w, //in.teabox.com/cdn/shop/files/Premix_00.png?v=1791874029&amp;width=700 700w, //in.teabox.com/cdn/shop/files/Premix_00.png?v=1791874029&amp;width=900 900w" width="900" height="619" loading="lazy" sizes="(max-width: 999px) 100vw, 40vw" class="av-split-card__image"></div>
+
+      <div class="av-split-card__body"><p class="av-split-card__heading">THE WORLD&#39;S FIRST PREBIOTIC INSTANT TEA MIX</p><p class="av-split-card__text">Real Assam tea + gut-friendly prebiotics. Hot or iced, in seconds.</p><a
+            href="/collections/premix"
+            class="av-btn av-btn--fill"
+            style="--av-btn-bg: 2 203 90; --av-btn-color: 31 58 44;"
+          >SEE HOW IT WORKS →</a></div>
+    </div>
+
+    <div class="av-split-card av-split-card--quiz"><p class="av-split-card__heading">NOT SURE WHERE TO START?</p><p class="av-split-card__text">Tell us what you drink and we&#39;ll suggest a tea you&#39;ll love. Real people, 24/7.</p><div
+          class="av-btn av-btn--fill av-fyt-btn"
+          id="av-fyt-btn"
+          style="--av-btn-bg: 2 203 90; --av-btn-color: 31 58 44;"
+        >HELP ME FIND MY TEA →</div></div>
+  </div>
+</div><script>
+  (function () {
+    var quizButton = document.getElementById('av-fyt-btn');
+    if (!quizButton) return;
+    quizButton.addEventListener('click', function () {
+      if (window.ChatWidget && typeof window.ChatWidget.open === 'function') window.ChatWidget.open();
+    });
+  })();
+</script>
+
+</section>
