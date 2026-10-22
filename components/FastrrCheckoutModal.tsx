@@ -293,7 +293,44 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
           body: JSON.stringify({ orderId, utr: assignedUtr }),
         });
       }
-    } catch {}
+
+      // Persist order directly into PostgreSQL / Admin database
+      await fetch("/api/admin/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderNumber: orderId,
+          customerName: fullName,
+          customerPhone: phone,
+          customerEmail: null,
+          address,
+          city,
+          state,
+          pincode,
+          landmark,
+          subtotal,
+          discountAmount,
+          couponCode: appliedCoupon?.code || null,
+          shippingFee,
+          codFee,
+          totalAmount: finalTotal,
+          paymentMethod,
+          paymentStatus: paymentMethod === "upi" ? "PAID" : "PENDING",
+          orderStatus: "PROCESSING",
+          utrNumber: paymentMethod === "upi" ? assignedUtr : null,
+          items: cartItems.map((item) => ({
+            productId: item.id,
+            title: item.title,
+            weight: item.weight,
+            price: item.price,
+            quantity: item.quantity,
+            image: item.image,
+          })),
+        }),
+      });
+    } catch (e) {
+      console.warn("Order persistence log:", e);
+    }
 
     setTimeout(() => {
       setIsProcessing(false);
