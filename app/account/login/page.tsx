@@ -12,8 +12,10 @@ import {
   customerRegisterSchema,
 } from "@/lib/validations/account";
 import { cleanIndianPhone } from "@/lib/validations/checkout";
+import { useCart } from "@/components/context/CartContext";
 
 export default function LoginPage() {
+  const { mergeCartItems, clearCart, cartItems } = useCart();
   // Mode: "fastrr" (the Shiprocket 1-click modal overlay), "password" (traditional email/password), "register", "forgot"
   const [viewMode, setViewMode] = useState<"fastrr" | "password" | "register" | "forgot">("fastrr");
 
@@ -61,13 +63,33 @@ export default function LoginPage() {
     });
   };
 
+  const restoreCustomerCart = (userKey: string) => {
+    try {
+      const sanitizedKey = `teabox_saved_cart_${userKey.replace(/[^a-zA-Z0-9]/g, "_")}`;
+      const savedRaw = localStorage.getItem(sanitizedKey);
+      if (savedRaw) {
+        const savedItems = JSON.parse(savedRaw);
+        if (Array.isArray(savedItems) && savedItems.length > 0) {
+          mergeCartItems(savedItems);
+          toast.success("Saved Cart Restored", {
+            description: "Previous customer cart synced without duplicates.",
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Customer cart merge error:", e);
+    }
+  };
+
   const handleVerifyOtp = (e: React.FormEvent) => {
     e.preventDefault();
     setIsVerifying(true);
     setTimeout(() => {
       setIsVerifying(false);
       setIsLoggedIn(true);
-      setLoggedInUser(`+91 ${mobileNumber}`);
+      const userKey = `+91 ${mobileNumber}`;
+      setLoggedInUser(userKey);
+      restoreCustomerCart(userKey);
       toast.success("Welcome back!", {
         description: `Logged in as +91 ${mobileNumber}`,
       });
@@ -86,6 +108,7 @@ export default function LoginPage() {
 
     setIsLoggedIn(true);
     setLoggedInUser(email);
+    restoreCustomerCart(email);
     toast.success("Welcome back!", {
       description: `Logged in as ${email}`,
     });
@@ -104,9 +127,30 @@ export default function LoginPage() {
     setRegisterSuccess(true);
     toast.success("Account created successfully!");
     setTimeout(() => {
+      const userKey = name || email;
       setIsLoggedIn(true);
-      setLoggedInUser(name || email);
+      setLoggedInUser(userKey);
+      restoreCustomerCart(userKey);
     }, 800);
+  };
+
+  const handleLogout = () => {
+    // Secure current user's cart to their private key before logout
+    if (loggedInUser && cartItems.length > 0) {
+      try {
+        const sanitizedKey = `teabox_saved_cart_${loggedInUser.replace(/[^a-zA-Z0-9]/g, "_")}`;
+        localStorage.setItem(sanitizedKey, JSON.stringify(cartItems));
+      } catch {}
+    }
+    setIsLoggedIn(false);
+    setLoggedInUser("");
+    setOtpSent(false);
+    setMobileNumber("");
+    setViewMode("fastrr");
+    clearCart();
+    toast.info("Logged Out", {
+      description: "Cart state cleared to prevent leaking data.",
+    });
   };
 
   return (
@@ -163,12 +207,7 @@ export default function LoginPage() {
               </Link>
               <button
                 type="button"
-                onClick={() => {
-                  setIsLoggedIn(false);
-                  setOtpSent(false);
-                  setMobileNumber("");
-                  setViewMode("fastrr");
-                }}
+                onClick={handleLogout}
                 className="w-full border border-[#e7e2d8] hover:border-[#202020] text-[#5c5a52] font-semibold text-[13px] py-2.5 rounded-lg transition-colors cursor-pointer"
               >
                 Sign Out

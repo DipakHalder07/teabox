@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllOrders, saveOrder, StoredOrderData } from "@/lib/ordersDb";
+import { getAllOrders, saveOrder, getOrderById, StoredOrderData } from "@/lib/ordersDb";
+import { PRODUCTS } from "@/data/products";
 import { verifyAdminRequest } from "@/lib/auth";
 import { orderCreationSchema, cleanIndianPhone } from "@/lib/validations/checkout";
 import { sendOrderConfirmationEmail } from "@/lib/email";
@@ -72,6 +73,61 @@ export async function POST(req: NextRequest) {
 
     const body = validationResult.data;
 
+    // 1. Prevent duplicate order creation
+    const existingOrder = await getOrderById(body.orderNumber);
+    if (existingOrder) {
+      return NextResponse.json({
+        status: "success",
+        order: existingOrder,
+        duplicatePrevented: true,
+      });
+    }
+
+    // 2. Authoritative Price & Line Item Verification from Catalog
+    const validatedItems = body.items.map((item) => {
+      const found = PRODUCTS.find(
+        (p) =>
+          p.id === item.productId ||
+          p.handle === item.productId ||
+          (item.productId && item.productId.startsWith(p.id))
+      );
+
+      const authoritativePrice = found
+        ? found.price
+        : Math.max(1, Math.round(item.price));
+      const validQuantity = Math.max(1, Math.floor(item.quantity));
+
+      return {
+        ...item,
+        price: authoritativePrice,
+        quantity: validQuantity,
+      };
+    });
+
+    const authoritativeSubtotal = validatedItems.reduce(
+      (sum, it) => sum + it.price * it.quantity,
+      0
+    );
+
+    // 3. Authoritative Coupon Discount Calculation
+    let authoritativeDiscount = 0;
+    if (body.couponCode) {
+      const code = body.couponCode.trim().toUpperCase();
+      if (code === "WELCOME10" || code === "TEA10") {
+        authoritativeDiscount = Math.round(authoritativeSubtotal * 0.1);
+      } else if (code === "FIRSTTEA") {
+        authoritativeDiscount = Math.min(150, authoritativeSubtotal);
+      }
+    }
+
+    // 4. Authoritative Shipping & COD Fees
+    const authoritativeShipping = authoritativeSubtotal >= 399 ? 0 : 50;
+    const authoritativeCod = body.paymentMethod === "cod" ? 40 : 0;
+    const authoritativeTotal = Math.max(
+      0,
+      authoritativeSubtotal - authoritativeDiscount + authoritativeShipping + authoritativeCod
+    );
+
     const saved = await saveOrder({
       id: rawBody.id || body.orderNumber,
       orderNumber: body.orderNumber,
@@ -83,18 +139,18 @@ export async function POST(req: NextRequest) {
       state: body.state,
       pincode: body.pincode,
       landmark: body.landmark || null,
-      subtotal: body.subtotal,
-      discountAmount: body.discountAmount,
+      subtotal: authoritativeSubtotal,
+      discountAmount: authoritativeDiscount,
       couponCode: body.couponCode || null,
-      shippingFee: body.shippingFee,
-      codFee: body.codFee,
-      totalAmount: body.totalAmount,
+      shippingFee: authoritativeShipping,
+      codFee: authoritativeCod,
+      totalAmount: authoritativeTotal,
       paymentMethod: body.paymentMethod,
       paymentStatus: body.paymentStatus,
       orderStatus: body.orderStatus,
       utrNumber: body.utrNumber || null,
       notes: body.notes || null,
-      items: body.items,
+      items: validatedItems,
     });
 
     // Send order confirmation email asynchronously
