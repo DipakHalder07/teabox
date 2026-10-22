@@ -43,19 +43,59 @@ export default function ProductDetailPage({ product }: { product: Product }) {
   // FAQ Accordion State
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
-  // Custom Cursor state following mouse on image container (Matches live Teabox theme)
+  // Smooth Custom Cursor & Hover Navigation (120fps requestAnimationFrame, 0 React re-renders on mousemove)
   const imageContainerRef = useRef<HTMLDivElement>(null);
-  const [cursorPos, setCursorPos] = useState<{
-    x: number;
-    y: number;
-    visible: boolean;
-    isLeft: boolean;
-  }>({
-    x: 0,
-    y: 0,
-    visible: false,
-    isLeft: false,
-  });
+  const cursorFollowerRef = useRef<HTMLDivElement>(null);
+  const cursorArrowRef = useRef<SVGSVGElement>(null);
+  const thumbnailContainerRef = useRef<HTMLDivElement>(null);
+
+  // Mutable animation state (no React re-renders on mousemove)
+  const mouseTargetRef = useRef({ x: 0, y: 0, visible: false, isLeft: false });
+  const mouseCurrentRef = useRef({ x: 0, y: 0, scale: 0, opacity: 0 });
+  const animFrameId = useRef<number | null>(null);
+
+  // Setup silky smooth requestAnimationFrame loop for cursor
+  useEffect(() => {
+    const loop = () => {
+      const target = mouseTargetRef.current;
+      const current = mouseCurrentRef.current;
+      const el = cursorFollowerRef.current;
+      const arrow = cursorArrowRef.current;
+
+      if (el) {
+        // High-precision smooth lerp
+        current.x += (target.x - current.x) * 0.24;
+        current.y += (target.y - current.y) * 0.24;
+        current.opacity += ((target.visible ? 1 : 0) - current.opacity) * 0.22;
+        current.scale += ((target.visible ? 1 : 0.4) - current.scale) * 0.22;
+
+        el.style.transform = `translate3d(${current.x}px, ${current.y}px, 0) translate(-50%, -50%) scale(${current.scale})`;
+        el.style.opacity = `${current.opacity}`;
+
+        if (arrow) {
+          arrow.style.transform = target.isLeft ? "rotate(180deg)" : "rotate(0deg)";
+        }
+      }
+
+      animFrameId.current = requestAnimationFrame(loop);
+    };
+
+    animFrameId.current = requestAnimationFrame(loop);
+    return () => {
+      if (animFrameId.current) cancelAnimationFrame(animFrameId.current);
+    };
+  }, []);
+
+  const handleMouseEnter = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!imageContainerRef.current) return;
+    const rect = imageContainerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const isLeft = x < rect.width / 2;
+    mouseTargetRef.current = { x, y, visible: true, isLeft };
+    mouseCurrentRef.current.x = x;
+    mouseCurrentRef.current.y = y;
+  };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!imageContainerRef.current) return;
@@ -63,31 +103,45 @@ export default function ProductDetailPage({ product }: { product: Product }) {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     const isLeft = x < rect.width / 2;
-    setCursorPos({ x, y, visible: true, isLeft });
+    mouseTargetRef.current = { x, y, visible: true, isLeft };
   };
 
   const handleMouseLeave = () => {
-    setCursorPos((prev) => ({ ...prev, visible: false }));
+    mouseTargetRef.current.visible = false;
   };
 
   const handleContainerClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;
-    if (cursorPos.isLeft) {
-      setActiveImageIndex((prev) => Math.max(0, prev - 1));
+    if (mouseTargetRef.current.isLeft) {
+      setActiveImageIndex((prev) => (prev > 0 ? prev - 1 : galleryImages.length - 1));
     } else {
-      setActiveImageIndex((prev) => Math.min(galleryImages.length - 1, prev + 1));
+      setActiveImageIndex((prev) => (prev < galleryImages.length - 1 ? prev + 1 : 0));
     }
   };
 
   const handlePrevImage = (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    setActiveImageIndex((prev) => Math.max(0, prev - 1));
+    setActiveImageIndex((prev) => (prev > 0 ? prev - 1 : galleryImages.length - 1));
   };
 
   const handleNextImage = (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    setActiveImageIndex((prev) => Math.min(galleryImages.length - 1, prev + 1));
+    setActiveImageIndex((prev) => (prev < galleryImages.length - 1 ? prev + 1 : 0));
   };
+
+  // Auto-scroll thumbnails when active image changes
+  useEffect(() => {
+    if (!thumbnailContainerRef.current) return;
+    const container = thumbnailContainerRef.current;
+    const activeThumb = container.children[activeImageIndex] as HTMLElement;
+    if (activeThumb) {
+      const containerWidth = container.offsetWidth;
+      const thumbOffsetLeft = activeThumb.offsetLeft;
+      const thumbWidth = activeThumb.offsetWidth;
+      const scrollPos = thumbOffsetLeft - containerWidth / 2 + thumbWidth / 2;
+      container.scrollTo({ left: Math.max(0, scrollPos), behavior: "smooth" });
+    }
+  }, [activeImageIndex]);
 
   // Keyboard navigation for image gallery
   useEffect(() => {
@@ -248,6 +302,7 @@ export default function ProductDetailPage({ product }: { product: Product }) {
             {/* Main Stage Image with dynamic cursor-following hover navigation */}
             <div
               ref={imageContainerRef}
+              onMouseEnter={handleMouseEnter}
               onMouseMove={handleMouseMove}
               onMouseLeave={handleMouseLeave}
               onClick={handleContainerClick}
@@ -259,53 +314,76 @@ export default function ProductDetailPage({ product }: { product: Product }) {
                 </span>
               )}
 
-              {/* Dynamic custom cursor circle following the mouse pointer (Live Teabox Hover) */}
-              {cursorPos.visible && (
-                <div
-                  className="hidden lg:flex pointer-events-none absolute z-30 w-12 h-12 rounded-full bg-white text-[#202020] shadow-[0_4px_16px_rgba(0,0,0,0.18)] border border-[#e7e2d8] items-center justify-center transition-transform duration-75 ease-out select-none -translate-x-1/2 -translate-y-1/2"
-                  style={{
-                    left: `${cursorPos.x}px`,
-                    top: `${cursorPos.y}px`,
-                  }}
+              {/* Dynamic custom cursor circle following the mouse pointer (120fps lerp, silky smooth) */}
+              <div
+                ref={cursorFollowerRef}
+                className="hidden lg:flex pointer-events-none absolute z-30 w-12 h-12 rounded-full bg-white text-[#202020] shadow-[0_4px_16px_rgba(0,0,0,0.18)] border border-[#e7e2d8] items-center justify-center select-none will-change-transform"
+                style={{
+                  top: 0,
+                  left: 0,
+                  opacity: 0,
+                  transform: "translate3d(-100px, -100px, 0)",
+                }}
+              >
+                <svg
+                  ref={cursorArrowRef}
+                  role="presentation"
+                  focusable="false"
+                  width="11"
+                  height="15"
+                  viewBox="0 0 7 10"
+                  className="transition-transform duration-250 ease-[cubic-bezier(0.34,1.56,0.64,1)] text-[#1f3a2c]"
                 >
-                  <svg
-                    role="presentation"
-                    focusable="false"
-                    width="10"
-                    height="14"
-                    viewBox="0 0 7 10"
-                    className={`transition-transform duration-150 ${
-                      cursorPos.isLeft ? "rotate-180" : "rotate-0"
-                    }`}
-                  >
-                    <path
-                      d="m1 9 4-4-4-4"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  <path
+                    d="m1 9 4-4-4-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+
+              {/* Silky-Smooth Sliding Image Track */}
+              <div className="w-full h-full overflow-hidden relative">
+                <div
+                  className="flex h-full w-full transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform"
+                  style={{ transform: `translateX(-${activeImageIndex * 100}%)` }}
+                >
+                  {galleryImages.map((img, idx) => (
+                    <div
+                      key={idx}
+                      className="relative w-full h-full shrink-0 flex items-center justify-center p-2 sm:p-4"
+                    >
+                      <Image
+                        src={img}
+                        alt={`${product.title} - view ${idx + 1}`}
+                        fill
+                        priority={idx === 0 || idx === 1}
+                        className="object-contain p-2 sm:p-4 select-none pointer-events-none transition-transform duration-500 ease-out"
+                        sizes="(max-width: 1024px) 100vw, 50vw"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Slide Counter Pill (Bottom Left) */}
+              {galleryImages.length > 1 && (
+                <div className="absolute bottom-3.5 left-3.5 sm:bottom-4 sm:left-4 z-20 bg-white/90 backdrop-blur-xs border border-[#e7e2d8] text-[#5c5a52] text-[11.5px] font-bold px-2.5 py-1 rounded-full shadow-2xs pointer-events-none flex items-center gap-1.5">
+                  <span className="text-[#1f3a2c]">{activeImageIndex + 1}</span>
+                  <span className="text-[#a09e99]">/</span>
+                  <span>{galleryImages.length}</span>
                 </div>
               )}
-
-              {/* Main Image View */}
-              <div className="w-full h-full relative">
-                <Image
-                  src={galleryImages[activeImageIndex] || product.image}
-                  alt={`${product.title} - view ${activeImageIndex + 1}`}
-                  fill
-                  priority
-                  className="object-contain p-2 sm:p-4 transition-all duration-300"
-                  sizes="(max-width: 1024px) 100vw, 50vw"
-                />
-              </div>
 
               {/* Zoom Trigger Button at Top Right (Matches Live Site Organic Green) */}
               <button
                 type="button"
-                onMouseEnter={() => setCursorPos((prev) => ({ ...prev, visible: false }))}
+                onMouseEnter={() => {
+                  mouseTargetRef.current.visible = false;
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsZoomOpen(true);
@@ -318,41 +396,41 @@ export default function ProductDetailPage({ product }: { product: Product }) {
 
               {/* Mobile/Touch Fallback Navigation Arrows */}
               <div className="lg:hidden pointer-events-none">
-                {activeImageIndex > 0 && (
-                  <button
-                    type="button"
-                    onClick={handlePrevImage}
-                    aria-label="Previous image"
-                    className="pointer-events-auto absolute left-2.5 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-white/95 text-[#202020] shadow flex items-center justify-center cursor-pointer active:scale-95"
-                  >
-                    <ChevronLeft size={18} />
-                  </button>
-                )}
-                {activeImageIndex < galleryImages.length - 1 && (
-                  <button
-                    type="button"
-                    onClick={handleNextImage}
-                    aria-label="Next image"
-                    className="pointer-events-auto absolute right-2.5 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-white/95 text-[#202020] shadow flex items-center justify-center cursor-pointer active:scale-95"
-                  >
-                    <ChevronRight size={18} />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handlePrevImage}
+                  aria-label="Previous image"
+                  className="pointer-events-auto absolute left-2.5 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-white/95 text-[#202020] shadow flex items-center justify-center cursor-pointer active:scale-95"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNextImage}
+                  aria-label="Next image"
+                  className="pointer-events-auto absolute right-2.5 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-white/95 text-[#202020] shadow flex items-center justify-center cursor-pointer active:scale-95"
+                >
+                  <ChevronRight size={18} />
+                </button>
               </div>
             </div>
 
-            {/* Thumbnail Row (All 9 live carousel items) */}
+            {/* Thumbnail Row with smooth hover & auto-scroll (All 9 live carousel items) */}
             {galleryImages.length > 1 && (
-              <div className="flex items-center gap-2 sm:gap-2.5 overflow-x-auto pb-2 scrollbar-none">
+              <div
+                ref={thumbnailContainerRef}
+                className="flex items-center gap-2 sm:gap-2.5 overflow-x-auto pb-2 scrollbar-none scroll-smooth"
+              >
                 {galleryImages.map((img, idx) => (
                   <button
                     key={idx}
                     type="button"
+                    onMouseEnter={() => setActiveImageIndex(idx)}
                     onClick={() => setActiveImageIndex(idx)}
-                    className={`relative w-14 h-14 sm:w-16 sm:h-16 md:w-[68px] md:h-[68px] rounded-[10px] overflow-hidden bg-[#fafafa] shrink-0 transition-all cursor-pointer ${
+                    className={`relative w-14 h-14 sm:w-16 sm:h-16 md:w-[68px] md:h-[68px] rounded-[10px] overflow-hidden bg-[#fafafa] shrink-0 transition-all duration-200 cursor-pointer ${
                       activeImageIndex === idx
-                        ? "border-2 border-[#1c3327] shadow-xs"
-                        : "border border-[#E7E2D8] hover:border-[#1c3327]/60 opacity-80 hover:opacity-100"
+                        ? "border-2 border-[#1c3327] shadow-xs scale-[1.03]"
+                        : "border border-[#E7E2D8] hover:border-[#1c3327]/60 opacity-75 hover:opacity-100 hover:scale-[1.02]"
                     }`}
                   >
                     <Image
