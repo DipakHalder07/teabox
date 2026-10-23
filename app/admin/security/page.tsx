@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { RefreshCw, ShieldCheck, ShieldAlert, LogOut, CheckCircle2, XCircle, KeyRound } from "lucide-react";
+import { istDateTime } from "@/lib/istTime";
 
 interface Attempt {
   id: string;
@@ -123,7 +124,7 @@ export default function AdminSecurityPage() {
           </span>
           <span className="font-bold text-[15px] text-[#1f3a2c] block truncate">{data?.admin.email || "…"}</span>
           <span className="text-[12px] text-[#747576]">
-            Last sign-in: {data?.lastLoginAt ? new Date(data.lastLoginAt).toLocaleString("en-IN") : "—"}
+            Last sign-in: {data?.lastLoginAt ? istDateTime(data.lastLoginAt) : "—"}
           </span>
         </div>
 
@@ -208,7 +209,7 @@ export default function AdminSecurityPage() {
                     <td className="py-3 px-4 font-mono text-[12px] text-[#5c5a52]">{a.ip || "—"}</td>
                     <td className="py-3 px-4 text-[#5c5a52]">{deviceLabel(a.userAgent)}</td>
                     <td className="py-3 px-4 text-right text-[#747576] whitespace-nowrap">
-                      {new Date(a.createdAt).toLocaleString("en-IN")}
+                      {istDateTime(a.createdAt)}
                     </td>
                   </tr>
                 ))}

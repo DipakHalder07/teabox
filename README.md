@@ -40,8 +40,8 @@ Import the project on https://vercel.com/new (root directory: `teabox`), then op
 | `RESEND_API_KEY` **or** `GMAIL_USER` + `GMAIL_APP_PASSWORD` | sends customer sign-in codes and order emails |
 
 Optional: `WHATSAPP_SERVICE_URL` + `WHATSAPP_SERVICE_TOKEN` (checkout WhatsApp codes and
-alerts; the service in `whatsapp-service/` must run on an always-on host such as Railway, not
-Vercel), and `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` (Gmail bank alerts).
+alerts; the service in `whatsapp-service/` runs outside Vercel, for free on Render: see
+`whatsapp-service/README.md`), and `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` (Gmail bank alerts).
 
 ### 3. Create the tables (once, and again after schema changes)
 

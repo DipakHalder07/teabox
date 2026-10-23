@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
       payAmount: (s.payPaise / 100).toFixed(2),
       status: s.status,
       stage: checkoutStage(s, otpRequired),
+      createdAt: s.createdAt,
       expiresAt: s.expiresAt,
     })),
     recentPaid: paid.map((s) => ({

@@ -285,3 +285,12 @@ model GatewaySetting {
 
   @@map("gateway_settings")
 }
+
+// WhatsApp login of whatsapp-service when it runs with WHATSAPP_SESSION_DB_URL (free hosts
+// without a disk). Written only by that service; one row per session file.
+model WhatsappAuth {
+  id   String @id
+  data String
+
+  @@map("whatsapp_auth")
+}

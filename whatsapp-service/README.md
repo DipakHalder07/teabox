@@ -18,18 +18,31 @@ npm run dev   # database + this service + the shop (installs this service on fir
 Then open **Admin → Payment Gateway** and scan the QR with WhatsApp
 (**Settings → Linked devices → Link a device**).
 
-## Online (for the shop on Vercel), e.g. Railway
+## Online for free: Render
 
-1. Create a new Railway project from this `whatsapp-service` folder (it has a `Dockerfile`).
-2. Add a **Volume** mounted at `/app/auth` (keeps the WhatsApp login after restarts).
-3. Set the variable `WHATSAPP_SERVICE_TOKEN` to a long random value.
-4. Generate a public domain for the service.
-5. In Vercel, set `WHATSAPP_SERVICE_URL` to that domain (https://…) and
-   `WHATSAPP_SERVICE_TOKEN` to the same value, then redeploy the shop.
-6. Scan the QR in **Admin → Payment Gateway**.
+The free plan sleeps after 15 minutes without visitors and wipes its disk on restart. The
+service handles both: it keeps the WhatsApp login in the shop's database and calls its own
+`/health` every 10 minutes so it stays awake.
 
-Any always-on host works the same way (a VPS, Fly.io, Render paid plan). Free plans that
-sleep when idle will log WhatsApp out.
+1. Push the shop to GitHub, then on https://render.com choose **New → Blueprint** and pick the
+   repo. Render reads `render.yaml` and creates `teabox-whatsapp` (free, Singapore).
+2. When asked for `WHATSAPP_SESSION_DB_URL`, paste the Neon **direct** connection string (the
+   one without `-pooler`, and without `&pgbouncer=true`).
+3. After it deploys, copy from Render: the service address (`https://teabox-whatsapp.onrender.com`)
+   and the generated `WHATSAPP_SERVICE_TOKEN` (Environment tab).
+4. In Vercel, set `WHATSAPP_SERVICE_URL` to that address and `WHATSAPP_SERVICE_TOKEN` to the same
+   token, then redeploy the shop.
+5. Scan the QR in **Admin → Payment Gateway**.
+
+Free plan limits: 750 hours a month, enough for this one service running all month (do not run
+a second free Render service). A Render restart reconnects by itself; no new scan is needed.
+
+## Paid / other hosts (Railway, a VPS, …)
+
+1. Deploy this folder (it has a `Dockerfile`).
+2. Either mount a **Volume** at `/app/auth`, or set `WHATSAPP_SESSION_DB_URL` as above.
+3. Set `WHATSAPP_SERVICE_TOKEN` to a long random value and give the service a public https address.
+4. In Vercel, set `WHATSAPP_SERVICE_URL` and `WHATSAPP_SERVICE_TOKEN`, redeploy, and scan the QR.
 
 ## API (all except `/health` need `Authorization: Bearer <WHATSAPP_SERVICE_TOKEN>`)
 

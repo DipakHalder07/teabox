@@ -13,6 +13,7 @@ import {
   Copy,
   Check,
 } from "lucide-react";
+import { istDateTime } from "@/lib/istTime";
 
 interface PaymentLogItem {
   id: string;
@@ -220,10 +221,7 @@ export default function AdminPaymentsPage() {
                     </span>
                   </td>
                   <td className="py-3 px-4 text-right text-[12px] text-[#747576] whitespace-nowrap">
-                    {new Date(p.createdAt).toLocaleTimeString("en-IN", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {istDateTime(p.createdAt)}
                   </td>
                 </tr>
               ))}

@@ -19,6 +19,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { StoredOrderData } from "@/lib/ordersDb";
+import { istDateTime } from "@/lib/istTime";
 
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<StoredOrderData[]>([]);
@@ -213,11 +214,7 @@ export default function AdminOrdersPage() {
                       {order.orderNumber}
                     </td>
                     <td className="py-3.5 px-4 text-[#747576] text-[12.5px] whitespace-nowrap">
-                      {new Date(order.createdAt).toLocaleDateString("en-IN", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
+                      {istDateTime(order.createdAt)}
                     </td>
                     <td className="py-3.5 px-4">
                       <span className="font-semibold text-[#202020] block">
@@ -328,7 +325,7 @@ export default function AdminOrdersPage() {
                   </span>
                 </div>
                 <span className="text-[12px] text-[#747576]">
-                  Placed on {new Date(activeOrder.createdAt).toLocaleString("en-IN")}
+                  Placed on {istDateTime(activeOrder.createdAt)}
                 </span>
               </div>
               <button

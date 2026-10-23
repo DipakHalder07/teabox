@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Bell, ChevronDown, ChevronUp } from "lucide-react";
+import { istTime } from "@/lib/istTime";
 
 interface LivePayment {
   id: string;
@@ -12,6 +13,7 @@ interface LivePayment {
   payAmount: string;
   status: "PENDING" | "VERIFYING";
   stage: string | null;
+  createdAt: string;
   expiresAt: string;
 }
 
@@ -185,7 +187,7 @@ export default function LivePaymentsWatcher() {
                           {p.customerName} · {rupees(p.payAmount)}
                         </span>
                         <span className={`block text-[11.5px] truncate ${p.status === "VERIFYING" ? "text-[#9a5b00] font-semibold" : "text-[#747576]"}`}>
-                          {p.stage} · {p.orderNumber}
+                          {p.stage} · {p.orderNumber} · {istTime(p.createdAt)}
                         </span>
                       </span>
                     </button>

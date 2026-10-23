@@ -3,7 +3,10 @@
 // Vercel (your computer, Railway, a VPS…). The shop talks to it with a secret token.
 //
 // Env: WHATSAPP_SERVICE_TOKEN (required), WHATSAPP_SERVICE_PORT (default 7071),
-//      WHATSAPP_AUTH_DIR (default ./auth: keep it on a persistent disk).
+//      WHATSAPP_AUTH_DIR (default ./auth: keep it on a persistent disk),
+//      WHATSAPP_SESSION_DB_URL (optional Postgres URL: keeps the login in the shop's database
+//      instead, for free hosts whose disk is wiped on restart, e.g. Render),
+//      KEEP_AWAKE_URL (optional; Render's RENDER_EXTERNAL_URL is used automatically).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -13,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import pino from "pino";
 import QRCode from "qrcode";
 import * as baileys from "@whiskeysockets/baileys";
+import pg from "pg";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 for (const file of [path.join(here, ".env"), path.join(here, "..", ".env")]) {
@@ -25,16 +29,77 @@ for (const file of [path.join(here, ".env"), path.join(here, "..", ".env")]) {
 const TOKEN = process.env.WHATSAPP_SERVICE_TOKEN || "";
 const PORT = Number(process.env.WHATSAPP_SERVICE_PORT || process.env.PORT || 7071);
 const AUTH_DIR = path.resolve(here, process.env.WHATSAPP_AUTH_DIR || "auth");
+const SESSION_DB_URL = process.env.WHATSAPP_SESSION_DB_URL || "";
+const KEEP_AWAKE_URL = process.env.KEEP_AWAKE_URL || process.env.RENDER_EXTERNAL_URL || "";
 if (TOKEN.length < 16) {
   console.error("Set WHATSAPP_SERVICE_TOKEN (at least 16 characters) before starting.");
   process.exit(1);
 }
 
 const makeWASocket = baileys.default?.default ?? baileys.default ?? baileys.makeWASocket;
-const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = baileys.default?.useMultiFileAuthState
-  ? baileys.default
-  : baileys;
+const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers, BufferJSON, initAuthCreds, proto } =
+  baileys.default?.useMultiFileAuthState ? baileys.default : baileys;
 const logger = pino({ level: process.env.WHATSAPP_LOG_LEVEL || "warn" });
+
+// ---- Where the WhatsApp login is kept ------------------------------------------------
+
+// Same layout as useMultiFileAuthState, one row per file, in the "whatsapp_auth" table
+// (declared in the shop's prisma/schema.prisma so `prisma db push` keeps it).
+const pool = SESSION_DB_URL ? new pg.Pool({ connectionString: SESSION_DB_URL, max: 3 }) : null;
+
+async function usePostgresAuthState() {
+  await pool.query("CREATE TABLE IF NOT EXISTS whatsapp_auth (id TEXT PRIMARY KEY, data TEXT NOT NULL)");
+  const read = async (id) => {
+    const { rows } = await pool.query("SELECT data FROM whatsapp_auth WHERE id = $1", [id]);
+    return rows[0] ? JSON.parse(rows[0].data, BufferJSON.reviver) : null;
+  };
+  const write = (id, value) =>
+    pool.query(
+      "INSERT INTO whatsapp_auth (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data",
+      [id, JSON.stringify(value, BufferJSON.replacer)]
+    );
+  const remove = (id) => pool.query("DELETE FROM whatsapp_auth WHERE id = $1", [id]);
+
+  const creds = (await read("creds")) || initAuthCreds();
+  return {
+    state: {
+      creds,
+      keys: {
+        get: async (type, ids) => {
+          const data = {};
+          await Promise.all(
+            ids.map(async (id) => {
+              let value = await read(`${type}-${id}`);
+              if (type === "app-state-sync-key" && value) value = proto.Message.AppStateSyncKeyData.fromObject(value);
+              data[id] = value;
+            })
+          );
+          return data;
+        },
+        set: async (data) => {
+          const tasks = [];
+          for (const category in data) {
+            for (const id in data[category]) {
+              const value = data[category][id];
+              tasks.push(value ? write(`${category}-${id}`, value) : remove(`${category}-${id}`));
+            }
+          }
+          await Promise.all(tasks);
+        },
+      },
+    },
+    saveCreds: () => write("creds", creds),
+  };
+}
+
+function loadAuthState() {
+  return pool ? usePostgresAuthState() : useMultiFileAuthState(AUTH_DIR);
+}
+
+async function clearSession() {
+  if (pool) await pool.query("DELETE FROM whatsapp_auth");
+  else fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+}
 
 // ---- WhatsApp connection -------------------------------------------------------------
 
@@ -48,7 +113,7 @@ function setState(patch) {
 
 async function connect() {
   clearTimeout(restartTimer);
-  const { state: auth, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  const { state: auth, saveCreds } = await loadAuthState();
   const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: undefined }));
 
   sock = makeWASocket({
@@ -74,10 +139,13 @@ async function connect() {
       const code = lastDisconnect?.error?.output?.statusCode;
       if (code === DisconnectReason.loggedOut) {
         console.log("WhatsApp logged out; showing a new QR.");
-        fs.rmSync(AUTH_DIR, { recursive: true, force: true });
       }
       setState({ status: "connecting", qr: null });
-      restartTimer = setTimeout(() => connect().catch(onFatal), code === DisconnectReason.loggedOut ? 500 : 3000);
+      const reconnect = async () => {
+        if (code === DisconnectReason.loggedOut) await clearSession();
+        await connect();
+      };
+      restartTimer = setTimeout(() => reconnect().catch(onFatal), code === DisconnectReason.loggedOut ? 500 : 3000);
     }
   });
 }
@@ -193,7 +261,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && pathname === "/logout") {
       await sock?.logout().catch(() => {});
-      fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+      await clearSession();
       setState({ status: "connecting", qr: null, phone: null });
       await connect();
       return json(res, 200, { loggedOut: true });
@@ -206,5 +274,15 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => console.log(`TeaPay WhatsApp service on port ${PORT} (session in ${AUTH_DIR})`));
+server.listen(PORT, () =>
+  console.log(`TeaPay WhatsApp service on port ${PORT} (session in ${pool ? "the database" : AUTH_DIR})`)
+);
 connect().catch(onFatal);
+
+// Free hosts (Render) put a service to sleep after 15 minutes without visitors, which logs
+// WhatsApp out. Calling our own public /health every 10 minutes keeps it awake.
+if (KEEP_AWAKE_URL) {
+  const url = `${KEEP_AWAKE_URL.replace(/\/+$/, "")}/health`;
+  setInterval(() => fetch(url).catch(() => {}), 10 * 60 * 1000).unref();
+  console.log(`Keeping awake via ${url}`);
+}

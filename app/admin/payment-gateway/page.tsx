@@ -18,6 +18,7 @@ import {
   Clock,
   Banknote,
 } from "lucide-react";
+import { istDateTime, istTime } from "@/lib/istTime";
 
 interface Overview {
   toggles: { whatsapp: boolean; sms: boolean; gmail: boolean; cod: boolean };
@@ -609,7 +610,7 @@ export default function AdminPaymentGatewayPage() {
                             {s.customerName} <span className="font-mono font-semibold text-[#747576]">· {s.orderNumber}</span>
                           </div>
                           <div className="text-[12px] text-[#5c5a52]">
-                            ₹{s.payAmount} · {s.customerPhone} · <strong>{s.stage}</strong>
+                            Started {istTime(s.createdAt)} · ₹{s.payAmount} · {s.customerPhone} · <strong>{s.stage}</strong>
                             {s.customerUtr && ` · UTR typed: ${s.customerUtr}`}
                           </div>
                         </div>
@@ -906,7 +907,9 @@ export default function AdminPaymentGatewayPage() {
                       <td className="px-4 py-2.5 font-mono text-[11.5px]">
                         {s.utr || (s.customerUtr ? <span title="Typed by the customer, not verified">{s.customerUtr} (customer)</span> : "—")}
                       </td>
-                      <td className="px-4 py-2.5 text-[#747576] whitespace-nowrap">{timeAgo(s.createdAt)}</td>
+                      <td className="px-4 py-2.5 text-[#747576] whitespace-nowrap" title={timeAgo(s.createdAt)}>
+                        {istDateTime(s.createdAt)}
+                      </td>
                       <td className="px-4 py-2.5 text-right whitespace-nowrap">
                         {s.status !== "PAID" && (
                           <div className="inline-flex gap-1.5">

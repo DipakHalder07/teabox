@@ -132,7 +132,7 @@ export default function AdminLayout({
   return (
     <div className="min-h-screen bg-[#f7f6f2] flex flex-col md:flex-row text-[#202020]">
       {/* Mobile Header */}
-      <header className="md:hidden bg-[#1f3a2c] text-white px-4 py-3 flex items-center justify-between border-b border-[#2e5440]">
+      <header className="md:hidden sticky top-0 z-50 bg-[#1f3a2c] text-white px-4 py-3 flex items-center justify-between border-b border-[#2e5440]">
         <div className="flex items-center gap-2">
           <span className="font-stencil text-[18px] tracking-wider text-white">DEMOBOX</span>
           <span className="bg-[#02cb5a] text-[#1f3a2c] text-[9px] font-bold px-1.5 py-0.5 rounded">
@@ -147,11 +147,11 @@ export default function AdminLayout({
         </button>
       </header>
 
-      {/* Sidebar Navigation */}
+      {/* Sidebar Navigation: stays in place while the page scrolls (desktop) */}
       <aside
         className={`${
-          mobileMenuOpen ? "block" : "hidden"
-        } md:block md:w-64 bg-[#1f3a2c] text-white flex flex-col shrink-0 border-r border-[#2e5440] min-h-[calc(100vh-53px)] md:min-h-screen sticky top-0 z-40`}
+          mobileMenuOpen ? "flex" : "hidden"
+        } md:flex md:w-64 bg-[#1f3a2c] text-white flex-col shrink-0 border-r border-[#2e5440] min-h-[calc(100vh-53px)] md:min-h-0 md:h-screen md:sticky md:top-0 md:self-start md:overflow-y-auto z-40`}
       >
         {/* Brand Logo & DB Badge */}
         <div className="p-5 border-b border-[#2e5440] hidden md:block">
