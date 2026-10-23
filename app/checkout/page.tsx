@@ -33,6 +33,8 @@ import {
   cleanIndianPhone,
 } from "@/lib/validations/checkout";
 import TeaPayPanel, { cancelTeaPaySession, PaymentLeaveDialog, TeaPaySessionView } from "@/components/TeaPayPanel";
+import { newOrderNumber } from "@/lib/orderNumber";
+import { useCodAvailable } from "@/lib/useCodAvailable";
 
 // "native": the shop's own UPI gateway (TeaPay). "manual": shop QR + typed UTR (used without a database).
 interface UpiSessionData extends Partial<Omit<TeaPaySessionView, "status">> {
@@ -64,6 +66,7 @@ export default function CheckoutPage() {
 
   // Payment method (UPI via TeaPay or Cash on Delivery)
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "cod">("upi");
+  const [codAvailable, setCodAvailable] = useCodAvailable();
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderId, setOrderId] = useState("");
 
@@ -77,7 +80,7 @@ export default function CheckoutPage() {
   // paymentConfirmed: the bank credit was matched (the order was created on the server). utrSubmitted: manual-UPI UTR, unverified.
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [utrSubmitted, setUtrSubmitted] = useState(false);
-  const persistOrderRef = useRef<(utr: string | null) => Promise<void>>(async () => {});
+  const persistOrderRef = useRef<(utr: string | null) => Promise<string | null>>(async () => null);
   // Leaving while the UPI payment is open asks first (PaymentLeaveDialog).
   const [leaveAction, setLeaveAction] = useState<null | (() => void)>(null);
   const [copiedVpa, setCopiedVpa] = useState(false);
@@ -281,7 +284,7 @@ export default function CheckoutPage() {
 
   // Step 1 Form Submission (Validated by Zod via React Hook Form)
   const onShippingSubmit = (data: CheckoutShippingFormData) => {
-    const generatedId = orderId || `TBX-2026-${Math.floor(10000 + Math.random() * 90000)}`;
+    const generatedId = orderId || newOrderNumber();
     setOrderId(generatedId);
     setStep(2);
     initUpiSession(generatedId, finalTotal);
@@ -385,9 +388,10 @@ export default function CheckoutPage() {
   };
 
   // Saves the order. The server decides the payment status; the browser only reports the UTR it knows.
-  const persistOrder = async (utr: string | null) => {
+  // Returns an error message when the order was not saved.
+  const persistOrder = async (utr: string | null): Promise<string | null> => {
     try {
-      await fetch("/api/admin/orders", {
+      const res = await fetch("/api/admin/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -418,8 +422,14 @@ export default function CheckoutPage() {
           })),
         }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return data?.error || "Could not place the order. Please try again.";
+      }
+      return null;
     } catch (e) {
       console.warn("Order persistence log:", e);
+      return "Network error. Please check your connection and try again.";
     }
   };
   useEffect(() => {
@@ -450,7 +460,7 @@ export default function CheckoutPage() {
   // Start over with a fresh payment (and order number).
   const restartUpiSession = () => {
     if (upiSession?.mode === "native" && upiSession.sessionId) cancelTeaPaySession(upiSession.sessionId);
-    const newOrderId = `TB-${Math.floor(100000 + Math.random() * 900000)}`;
+    const newOrderId = newOrderNumber();
     setOrderId(newOrderId);
     setUpiSession(null);
     initUpiSession(newOrderId, finalTotal);
@@ -460,7 +470,7 @@ export default function CheckoutPage() {
     if (upiSession?.mode === "native" && !paymentConfirmed) {
       if (upiSession.sessionId) cancelTeaPaySession(upiSession.sessionId);
       setUpiSession(null);
-      setOrderId(`TB-${Math.floor(100000 + Math.random() * 900000)}`);
+      setOrderId(newOrderNumber());
     }
     setPaymentMethod("cod");
   };
@@ -479,7 +489,16 @@ export default function CheckoutPage() {
     const currentTotal = latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal;
     setConfirmedTotal(currentTotal);
     setIsProcessing(true);
-    await persistOrder(confirmedUtr || null);
+    const error = await persistOrder(confirmedUtr || null);
+    if (error) {
+      setIsProcessing(false);
+      if (paymentMethod === "cod" && /cash on delivery/i.test(error)) {
+        setCodAvailable(false);
+        setPaymentMethod("upi");
+      }
+      toast.error("Order not placed", { description: error });
+      return;
+    }
 
     toast.success("Order Placed Successfully!", {
       description: `Order #${orderId} has been received.`,
@@ -546,26 +565,26 @@ export default function CheckoutPage() {
       )}
 
       {/* Top Luxury Checkout Header */}
-      <header className="bg-[#1f3a2c] text-white py-4 px-4 sm:px-8 border-b border-[#2d4d3d] sticky top-0 z-30 shadow-sm">
-        <div className="max-w-[1240px] mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      <header className="bg-[#1f3a2c] text-white py-3.5 sm:py-4 px-3.5 sm:px-8 border-b border-[#2d4d3d] sticky top-0 z-30 shadow-sm">
+        <div className="max-w-[1240px] mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <Link
               href="/"
               onClick={() => {
                 if (step === 3) resetOrderState();
               }}
-              className="hover:opacity-90 transition-opacity"
+              className="hover:opacity-90 transition-opacity shrink-0"
             >
-              <span className="font-stencil text-[22px] sm:text-[24px] font-bold tracking-wider text-white">
+              <span className="font-stencil text-[20px] sm:text-[24px] font-bold tracking-wider text-white">
                 DEMOBOX
               </span>
             </Link>
-            <span className="text-[10.5px] sm:text-[11px] bg-[#02cb5a] text-[#1f3a2c] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+            <span className="hidden sm:inline-block text-[10.5px] sm:text-[11px] bg-[#02cb5a] text-[#1f3a2c] font-bold px-2 py-0.5 rounded uppercase tracking-wider whitespace-nowrap">
               Fastrr 1-Click Checkout
             </span>
           </div>
 
-          <div className="flex items-center gap-4 text-[13px] text-[#bfdcc9]">
+          <div className="flex items-center gap-3 sm:gap-4 text-[13px] text-[#bfdcc9] shrink-0">
             <span className="hidden sm:flex items-center gap-1.5 text-[#02cb5a] font-semibold">
               <ShieldCheck size={16} /> 256-Bit SSL Encrypted
             </span>
@@ -578,7 +597,7 @@ export default function CheckoutPage() {
                   guardLeave(() => router.push("/collections/all"));
                 }
               }}
-              className="text-white hover:text-[#02cb5a] text-[13px] flex items-center gap-1 font-medium transition-colors"
+              className="text-white hover:text-[#02cb5a] text-[12.5px] sm:text-[13px] flex items-center gap-1 font-medium transition-colors whitespace-nowrap"
             >
               <ArrowLeft size={14} />
               <span>Back to Store</span>
@@ -589,55 +608,61 @@ export default function CheckoutPage() {
 
       {/* Checkout Progress Stepper (Only for Step 1 & 2) */}
       {effectiveStep !== 3 && (
-        <div className="bg-white border-b border-[#e7e2d8] py-3.5 px-4">
-          <div className="max-w-[700px] mx-auto flex items-center justify-between text-[13px] font-semibold">
+        <div className="bg-white border-b border-[#e7e2d8] py-2.5 sm:py-3.5 px-3 sm:px-4">
+          <div className="max-w-[700px] mx-auto flex items-center justify-between text-[12px] sm:text-[13px] font-semibold">
             <div
-              className={`flex items-center gap-2 cursor-pointer ${
+              className={`flex items-center gap-1.5 sm:gap-2 cursor-pointer ${
                 effectiveStep === 1 ? "text-[#016c2f]" : "text-[#202020]"
               }`}
               onClick={() => guardLeave(() => setStep(1))}
             >
               <span
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold ${
+                className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[11px] sm:text-[12px] font-bold shrink-0 ${
                   effectiveStep === 1 ? "bg-[#02cb5a] text-[#1f3a2c]" : "bg-[#e7e2d8] text-[#202020]"
                 }`}
               >
                 1
               </span>
-              <span>1. Delivery Address</span>
+              <span>
+                <span className="hidden sm:inline">1. Delivery </span>Address
+              </span>
             </div>
 
-            <ChevronRight size={16} className="text-[#8e8d8a]" />
+            <ChevronRight size={14} className="text-[#8e8d8a] shrink-0" />
 
             <div
-              className={`flex items-center gap-2 ${
+              className={`flex items-center gap-1.5 sm:gap-2 ${
                 effectiveStep === 2 ? "text-[#016c2f]" : "text-[#747576]"
               }`}
             >
               <span
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold ${
+                className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[11px] sm:text-[12px] font-bold shrink-0 ${
                   effectiveStep === 2 ? "bg-[#02cb5a] text-[#1f3a2c]" : "bg-[#e7e2d8] text-[#747576]"
                 }`}
               >
                 2
               </span>
-              <span>2. Payment (UPI / COD)</span>
+              <span>
+                <span className="hidden sm:inline">2. </span>Payment<span className="hidden sm:inline">{codAvailable ? " (UPI / COD)" : " (UPI)"}</span>
+              </span>
             </div>
 
-            <ChevronRight size={16} className="text-[#8e8d8a]" />
+            <ChevronRight size={14} className="text-[#8e8d8a] shrink-0" />
 
-            <div className="flex items-center gap-2 text-[#747576]">
-              <span className="w-6 h-6 rounded-full bg-[#e7e2d8] text-[#747576] flex items-center justify-center text-[12px] font-bold">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-[#747576]">
+              <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-[#e7e2d8] text-[#747576] flex items-center justify-center text-[11px] sm:text-[12px] font-bold shrink-0">
                 3
               </span>
-              <span>3. Confirmation</span>
+              <span>
+                <span className="hidden sm:inline">3. </span>Confirm<span className="hidden sm:inline">ation</span>
+              </span>
             </div>
           </div>
         </div>
       )}
 
       {/* Main Body */}
-      <main className="max-w-[1240px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-10 flex-1">
+      <main className="max-w-[1240px] mx-auto w-full px-3.5 sm:px-6 lg:px-8 py-5 sm:py-10 flex-1">
         {/* While hydration is loading */}
         {!hasHydrated && !isConfirmation ? (
           <div className="bg-white border border-[#e7e2d8] rounded-2xl p-12 text-center max-w-[540px] mx-auto space-y-4 shadow-sm">
@@ -694,17 +719,17 @@ export default function CheckoutPage() {
                   <Truck size={16} /> 2–4 Business Days
                 </span>
               </div>
-              <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-3">
-                <span className="text-[#5c5a52]">Deliver To</span>
-                <span className="font-semibold text-[#202020] text-right truncate max-w-[260px]">
+              <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-3 gap-2">
+                <span className="text-[#5c5a52] shrink-0">Deliver To</span>
+                <span className="font-semibold text-[#202020] text-right truncate min-w-0 max-w-[200px] sm:max-w-[260px]">
                   {formValues.fullName}, {formValues.city}
                 </span>
               </div>
-              <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-3">
-                <span className="text-[#5c5a52]">Payment Method</span>
-                <span className="font-bold text-[#1f3a2c]">
+              <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-3 gap-2">
+                <span className="text-[#5c5a52] shrink-0">Payment Method</span>
+                <span className="font-bold text-[#1f3a2c] text-right text-[13px] sm:text-[14px]">
                   {paymentMethod === "upi"
-                    ? "UPI (Google Pay / PhonePe / Paytm)"
+                    ? "UPI (GPay / PhonePe / Paytm)"
                     : "Cash on Delivery (COD)"}
                 </span>
               </div>
@@ -769,7 +794,7 @@ export default function CheckoutPage() {
           /* ================= STEP 1 & 2: 2-COLUMN CHECKOUT ================= */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* Left Column: Form & Payment Step (7 cols) */}
-            <div className="lg:col-span-7 bg-white border border-[#e7e2d8] rounded-2xl p-5 sm:p-7 shadow-sm">
+            <div className="lg:col-span-7 bg-white border border-[#e7e2d8] rounded-xl sm:rounded-2xl p-4 sm:p-7 shadow-sm">
               <AnimatePresence mode="wait">
                 {/* ================= STEP 1: ADDRESS ================= */}
                 {effectiveStep === 1 && (
@@ -799,7 +824,7 @@ export default function CheckoutPage() {
                       <div className={`flex items-center border rounded-lg overflow-hidden bg-white ${
                         errors.phone ? "border-red-500" : "border-[#e7e2d8] focus-within:border-[#02cb5a]"
                       }`}>
-                        <span className="px-3 py-2.5 bg-[#fafafa] border-r border-[#e7e2d8] text-[14px] font-bold text-[#202020] flex items-center gap-1 select-none">
+                        <span className="px-3 py-2.5 bg-[#fafafa] border-r border-[#e7e2d8] text-[14px] font-bold text-[#202020] flex items-center gap-1 select-none shrink-0">
                           🇮🇳 +91
                         </span>
                         <input
@@ -815,7 +840,7 @@ export default function CheckoutPage() {
                             }
                           }}
                           placeholder="10-digit mobile number"
-                          className="flex-1 px-3.5 py-2.5 text-[14px] outline-none text-[#202020]"
+                          className="flex-1 min-w-0 px-3.5 py-2.5 text-[14px] outline-none text-[#202020]"
                         />
                       </div>
                       {errors.phone && (
@@ -979,19 +1004,19 @@ export default function CheckoutPage() {
                     className="space-y-6"
                   >
                     {/* Delivery Address Summary Bar */}
-                    <div className="bg-[#fafafa] border border-[#e7e2d8] rounded-xl p-3.5 flex items-center justify-between text-[13px]">
-                      <div>
-                        <span className="font-bold text-[#202020] block">
+                    <div className="bg-[#fafafa] border border-[#e7e2d8] rounded-xl p-3 sm:p-3.5 flex items-center justify-between gap-2.5 sm:gap-3 text-[13px]">
+                      <div className="flex-1 min-w-0">
+                        <span className="font-bold text-[#202020] block truncate">
                           {formValues.fullName} · {formValues.phone}
                         </span>
-                        <span className="text-[#5c5a52] truncate block max-w-[340px]">
+                        <span className="text-[#5c5a52] text-[12px] sm:text-[13px] truncate block w-full">
                           {formValues.address}, {formValues.city}, {formValues.state} - {formValues.pincode}
                         </span>
                       </div>
                       <button
                         type="button"
                         onClick={() => guardLeave(() => setStep(1))}
-                        className="text-[#016c2f] font-bold underline hover:opacity-80 cursor-pointer"
+                        className="text-[#016c2f] font-bold text-[12px] sm:text-[13px] underline hover:opacity-80 cursor-pointer shrink-0 whitespace-nowrap"
                       >
                         Edit Address
                       </button>
@@ -999,7 +1024,7 @@ export default function CheckoutPage() {
 
                     {/* Payment Methods */}
                     <div className="space-y-3">
-                      <h4 className="text-[14px] font-bold text-[#202020] uppercase tracking-wider">
+                      <h4 className="text-[13.5px] sm:text-[14px] font-bold text-[#202020] uppercase tracking-wider">
                         Select Payment Method
                       </h4>
 
@@ -1011,22 +1036,22 @@ export default function CheckoutPage() {
                             initUpiSession(orderId, finalTotal);
                           }
                         }}
-                        className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
+                        className={`border-2 rounded-xl p-3 sm:p-4 transition-all cursor-pointer ${
                           paymentMethod === "upi"
                             ? "border-[#1f3a2c] bg-[#fafafa]"
                             : "border-[#e7e2d8] hover:border-[#1f3a2c]/60 bg-white"
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-5 h-5 rounded-full border-2 border-[#1f3a2c] flex items-center justify-center">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                            <div className="w-5 h-5 rounded-full border-2 border-[#1f3a2c] flex items-center justify-center shrink-0">
                               {paymentMethod === "upi" && (
                                 <div className="w-2.5 h-2.5 rounded-full bg-[#1f3a2c]" />
                               )}
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Image src="/assets/upi/upi.svg" alt="UPI" width={44} height={16} className="h-4 w-auto" />
-                              <span className="font-bold text-[15px] text-[#202020]">Pay by UPI</span>
+                            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                              <Image src="/assets/upi/upi.svg" alt="UPI" width={40} height={15} className="h-3.5 sm:h-4 w-auto shrink-0" />
+                              <span className="font-bold text-[14px] sm:text-[15px] text-[#202020] whitespace-nowrap">Pay by UPI</span>
                               <span className="hidden sm:flex items-center gap-1 ml-1">
                                 {["gpay", "phonepe", "paytm", "cred", "bhim"].map((app) => (
                                   <Image key={app} src={`/assets/upi/${app}.png`} alt="" width={20} height={20} className="rounded" />
@@ -1034,7 +1059,7 @@ export default function CheckoutPage() {
                               </span>
                             </div>
                           </div>
-                          <span className="bg-[#02cb5a]/20 text-[#016c2f] font-bold text-[11px] px-2.5 py-0.5 rounded flex items-center gap-1">
+                          <span className="bg-[#02cb5a]/20 text-[#016c2f] font-bold text-[10.5px] sm:text-[11px] px-2 sm:px-2.5 py-0.5 rounded flex items-center gap-1 shrink-0 whitespace-nowrap">
                             <ShieldCheck size={11} /> Instant &amp; Secure
                           </span>
                         </div>
@@ -1224,32 +1249,34 @@ export default function CheckoutPage() {
                         )}
                       </div>
 
-                      {/* 2. Cash On Delivery */}
-                      <div
-                        onClick={handleSelectCod}
-                        className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
-                          paymentMethod === "cod"
-                            ? "border-[#1f3a2c] bg-[#fafafa]"
-                            : "border-[#e7e2d8] hover:border-[#1f3a2c]/60 bg-white"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-5 h-5 rounded-full border-2 border-[#1f3a2c] flex items-center justify-center">
-                              {paymentMethod === "cod" && (
-                                <div className="w-2.5 h-2.5 rounded-full bg-[#1f3a2c]" />
-                              )}
+                      {/* 2. Cash On Delivery (can be switched off in Admin → Payment Gateway) */}
+                      {codAvailable && (
+                        <div
+                          onClick={handleSelectCod}
+                          className={`border-2 rounded-xl p-3 sm:p-4 transition-all cursor-pointer ${
+                            paymentMethod === "cod"
+                              ? "border-[#1f3a2c] bg-[#fafafa]"
+                              : "border-[#e7e2d8] hover:border-[#1f3a2c]/60 bg-white"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                              <div className="w-5 h-5 rounded-full border-2 border-[#1f3a2c] flex items-center justify-center shrink-0">
+                                {paymentMethod === "cod" && (
+                                  <div className="w-2.5 h-2.5 rounded-full bg-[#1f3a2c]" />
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Banknote size={19} className="text-[#016c2f] shrink-0" />
+                                <span className="font-bold text-[14px] sm:text-[15px] text-[#202020] whitespace-nowrap">
+                                  Cash on Delivery (COD)
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Banknote size={19} className="text-[#016c2f]" />
-                              <span className="font-bold text-[15px] text-[#202020]">
-                                Cash on Delivery (COD)
-                              </span>
-                            </div>
+                            <span className="text-[11.5px] sm:text-[12px] text-[#8e8d8a] font-medium shrink-0 whitespace-nowrap">+₹40 fee</span>
                           </div>
-                          <span className="text-[12px] text-[#8e8d8a] font-medium">+₹40 handling fee</span>
                         </div>
-                      </div>
+                      )}
                     </div>
 
                     {/* Final Place Order Button */}
@@ -1258,20 +1285,20 @@ export default function CheckoutPage() {
                         type="button"
                         onClick={handlePlaceOrder}
                         disabled={isProcessing}
-                        className="w-full bg-[#02cb5a] hover:bg-[#02b851] text-[#1f3a2c] py-4 px-5 rounded-xl font-bold text-[16px] uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-75"
+                        className="w-full bg-[#02cb5a] hover:bg-[#02b851] text-[#1f3a2c] py-3.5 sm:py-4 px-4 sm:px-5 rounded-xl font-bold text-[14.5px] sm:text-[16px] uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-75"
                       >
                         {isProcessing ? (
                           <>
-                            <span className="w-5 h-5 border-2 border-[#1f3a2c] border-t-transparent rounded-full animate-spin" />
-                            <span>Securing Your Garden-Fresh Teas...</span>
+                            <span className="w-5 h-5 border-2 border-[#1f3a2c] border-t-transparent rounded-full animate-spin shrink-0" />
+                            <span className="truncate">Securing Your Fresh Teas...</span>
                           </>
                         ) : (
                           <>
-                            <span>
+                            <span className="truncate">
                               {paymentMethod === "upi" ? "Confirm & Place Order" : "Place COD Order"} — ₹
                               {finalTotal.toLocaleString("en-IN")}
                             </span>
-                            <ArrowRight size={19} />
+                            <ArrowRight size={18} className="shrink-0" />
                           </>
                         )}
                       </button>
@@ -1283,7 +1310,7 @@ export default function CheckoutPage() {
 
             {/* Right Column: Order Summary & Selected Items (5 cols) */}
             <div className="lg:col-span-5 space-y-5">
-              <div className="bg-white border border-[#e7e2d8] rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
+              <div className="bg-white border border-[#e7e2d8] rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm space-y-4">
                 <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-3">
                   <h3 className="font-stencil text-[16px] font-bold text-[#202020]">
                     Order Summary ({cartItems.length} items)

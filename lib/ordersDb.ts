@@ -278,7 +278,8 @@ export async function searchOrders(query: string): Promise<StoredOrderData[]> {
             { id: { equals: q, mode: "insensitive" } },
             { orderNumber: { equals: q, mode: "insensitive" } },
             { trackingNumber: { equals: q, mode: "insensitive" } },
-            ...(cleanPhone && cleanPhone.length >= 6 ? [{ customerPhone: { contains: cleanPhone } }] : []),
+            // Only a full 10-digit mobile number matches, never a fragment of one.
+            ...(/^[6-9]\d{9}$/.test(cleanPhone) ? [{ customerPhone: cleanPhone }] : []),
           ],
         },
         include: { items: true, payments: true },
@@ -301,7 +302,7 @@ export async function searchOrders(query: string): Promise<StoredOrderData[]> {
       if (DEMO_ORDER_IDS.includes(ord.id)) continue;
       const matchId = ord.id.toLowerCase() === qLower || ord.orderNumber.toLowerCase() === qLower;
       const matchTracking = ord.trackingNumber?.toLowerCase() === qLower;
-      const matchPhone = cleanPhone && cleanPhone.length >= 6 && ord.customerPhone.includes(cleanPhone);
+      const matchPhone = /^[6-9]\d{9}$/.test(cleanPhone) && ord.customerPhone === cleanPhone;
       if (matchId || matchTracking || matchPhone) {
         matched.push(ord);
       }

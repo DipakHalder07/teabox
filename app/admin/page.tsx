@@ -33,7 +33,7 @@ export default function AdminOverviewPage() {
     try {
       const [ordersRes, healthRes] = await Promise.allSettled([
         fetch("/api/admin/orders"),
-        fetch("/api/health"),
+        fetch("/api/admin/status"),
       ]);
 
       if (ordersRes.status === "fulfilled") {
@@ -147,7 +147,7 @@ export default function AdminOverviewPage() {
 
         <div className="flex items-center gap-2 self-stretch md:self-auto justify-end shrink-0">
           <a
-            href="/api/health"
+            href="/api/admin/status"
             target="_blank"
             rel="noopener noreferrer"
             className="px-3 py-1.5 bg-[#fafafa] hover:bg-[#f0ece1] border border-[#e7e2d8] rounded-lg text-[12px] font-semibold text-[#1f3a2c] flex items-center gap-1.5 transition-colors"

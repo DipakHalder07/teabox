@@ -18,7 +18,19 @@ export async function GET(req: NextRequest) {
     where: { activeKey: { not: null }, matchUntil: { lt: now } },
     data: { activeKey: null },
   });
+  // Housekeeping: old one-time codes and sign-in history.
+  const day = 24 * 60 * 60 * 1000;
+  const otps = await prisma.otpChallenge.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - 2 * day) } } });
+  const logins = await prisma.adminLoginAttempt.deleteMany({
+    where: { createdAt: { lt: new Date(now.getTime() - 90 * day) } },
+  });
   const gmail = await pollGmail({ force: true });
 
-  return NextResponse.json({ expired: expired.count, released: released.count, gmail });
+  return NextResponse.json({
+    expired: expired.count,
+    released: released.count,
+    removedCodes: otps.count,
+    removedLoginRecords: logins.count,
+    gmail,
+  });
 }

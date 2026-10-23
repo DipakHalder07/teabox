@@ -5,11 +5,12 @@ import { setSetting } from "./settings";
 //  whatsapp: customers verify their number with a WhatsApp code before paying
 //  sms:      the paired Android phone confirms payments from bank SMS / payment-app notifications
 //  gmail:    bank alert emails confirm payments
+//  cod:      customers can choose Cash on Delivery at checkout
 
-export type ToggleKey = "whatsapp" | "sms" | "gmail";
+export type ToggleKey = "whatsapp" | "sms" | "gmail" | "cod";
 export type Toggles = Record<ToggleKey, boolean>;
 
-const DEFAULTS: Toggles = { whatsapp: false, sms: true, gmail: true };
+const DEFAULTS: Toggles = { whatsapp: false, sms: true, gmail: true, cod: true };
 const KEYS = Object.keys(DEFAULTS) as ToggleKey[];
 
 let cache: { at: number; value: Toggles } | null = null;

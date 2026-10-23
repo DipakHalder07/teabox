@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const normalizedEmail = email.trim().toLowerCase();
 
     // Verify OTP against server store
-    const verifyResult = verifyOtp(normalizedEmail, code);
+    const verifyResult = await verifyOtp(normalizedEmail, code);
     if (!verifyResult.success) {
       return NextResponse.json(
         {
@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
       role: "CUSTOMER",
     })
       .setProtectedHeader({ alg: "HS256" })
+      .setAudience("teabox-customer")
       .setIssuedAt()
       .setExpirationTime("30d")
       .sign(getJwtSecret());

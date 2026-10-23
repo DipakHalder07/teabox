@@ -16,10 +16,11 @@ import {
   Trash,
   IndianRupee,
   Clock,
+  Banknote,
 } from "lucide-react";
 
 interface Overview {
-  toggles: { whatsapp: boolean; sms: boolean; gmail: boolean };
+  toggles: { whatsapp: boolean; sms: boolean; gmail: boolean; cod: boolean };
   database: boolean;
   databaseHost?: string | null;
   databaseLocal?: boolean;
@@ -148,6 +149,43 @@ function Switch({ on, label, disabled, onChange }: { on: boolean; label: string;
 }
 
 type Act = (action: string, payload?: Record<string, unknown>, success?: string) => Promise<Record<string, unknown> | null>;
+
+/** Lets customers choose Cash on Delivery at checkout, or not. */
+function CodCard({ data, busy, act }: { data: Overview; busy: string; act: Act }) {
+  const on = data.toggles.cod;
+  return (
+    <Card>
+      <CardTitle
+        icon={Banknote}
+        title="Cash on Delivery (COD)"
+        right={
+          <Switch
+            on={on}
+            label="Cash on Delivery"
+            disabled={busy !== ""}
+            onChange={(next) =>
+              act("toggle", { key: "cod", enabled: next }, next ? "Cash on Delivery turned on" : "Cash on Delivery turned off")
+            }
+          />
+        }
+      />
+      <div className="mb-2">
+        <Pill ok={on}>{on ? "On" : "Off"}</Pill>
+      </div>
+      <p className="text-[12.5px] text-[#5c5a52]">
+        {on ? (
+          <>
+            <strong>On.</strong> Customers can choose Cash on Delivery at checkout (+₹40 fee).
+          </>
+        ) : (
+          <>
+            <strong>Off.</strong> Checkout shows UPI only. COD orders already placed are not affected.
+          </>
+        )}
+      </p>
+    </Card>
+  );
+}
 
 /** Log the shop's WhatsApp in (scan QR / pairing code) and send a test. Works without the database. */
 function WhatsAppCard({ data, busy, act }: { data: Overview; busy: string; act: Act }) {
@@ -543,6 +581,8 @@ export default function AdminPaymentGatewayPage() {
               <div className="text-[26px] font-bold text-[#1f3a2c]">{data.stats?.paidToday ?? 0}</div>
             </Card>
           </div>
+
+          <CodCard data={data} busy={busy} act={act} />
 
           {/* Customers on the checkout right now */}
           <Card>

@@ -18,6 +18,7 @@ import {
   Database,
   RefreshCw,
   Radio,
+  Lock,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -37,23 +38,36 @@ export default function AdminLayout({
   const [loading, setLoading] = useState(!isLoginPage);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Check auth session
+  // Check auth session on load, every 5 minutes, and when the tab is shown again,
+  // so an expired or revoked session leaves the admin straight away.
   useEffect(() => {
     if (isLoginPage) return;
 
-    fetch("/api/admin/auth/me")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.authenticated && data?.admin) {
-          setAdminUser(data.admin);
-          setLoading(false);
-        } else {
+    const check = () =>
+      fetch("/api/admin/auth/me", { cache: "no-store" })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.authenticated && data?.admin) {
+            setAdminUser(data.admin);
+            setLoading(false);
+          } else {
+            router.push("/admin/login");
+          }
+        })
+        .catch(() => {
           router.push("/admin/login");
-        }
-      })
-      .catch(() => {
-        router.push("/admin/login");
-      });
+        });
+
+    check();
+    const timer = setInterval(check, 5 * 60 * 1000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [isLoginPage, router]);
 
   const handleLogout = async () => {
@@ -106,6 +120,12 @@ export default function AdminLayout({
       href: "/admin/payment-gateway",
       icon: Radio,
       active: pathname.startsWith("/admin/payment-gateway"),
+    },
+    {
+      label: "Security",
+      href: "/admin/security",
+      icon: Lock,
+      active: pathname.startsWith("/admin/security"),
     },
   ];
 
@@ -191,7 +211,7 @@ export default function AdminLayout({
                 {adminUser?.name || "Admin"}
               </span>
               <span className="text-[11px] text-[#02cb5a] block truncate">
-                {adminUser?.email || "admin@demobox.com"}
+                {adminUser?.email || ""}
               </span>
             </div>
             <button

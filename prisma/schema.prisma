@@ -15,18 +15,33 @@ datasource db {
 // 1. ADMIN USER & AUTHENTICATION
 // ----------------------------------------------------
 model Admin {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String
-  name         String
-  role         String    @default("ADMIN") // "SUPER_ADMIN" | "ADMIN" | "MANAGER"
-  avatar       String?
-  isActive     Boolean   @default(true)
-  lastLoginAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  email          String    @unique
+  passwordHash   String
+  name           String
+  role           String    @default("ADMIN") // "SUPER_ADMIN" | "ADMIN" | "MANAGER"
+  avatar         String?
+  isActive       Boolean   @default(true)
+  sessionVersion Int       @default(0) // bumped to sign out every device
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@map("admins")
+}
+
+// Every admin sign-in attempt: drives the lockout and the Security page.
+model AdminLoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ip        String?
+  userAgent String?
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, ip, createdAt])
+  @@index([ip, createdAt])
+  @@map("admin_login_attempts")
 }
 
 // ----------------------------------------------------

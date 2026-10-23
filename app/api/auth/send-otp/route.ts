@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { emailOtpSchema } from "@/lib/validations/account";
 import { generateOtp } from "@/lib/store/otpStore";
 import { sendOtpVerificationEmail } from "@/lib/email";
+import { clientIp } from "@/lib/gateway/http";
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
     const { email } = parseResult.data;
 
     // Generate server-side OTP (enforces 30s cooldown and 10-minute expiry)
-    const otpResult = generateOtp(email);
+    const otpResult = await generateOtp(email, clientIp(req));
     if (!otpResult.success || !otpResult.code) {
       return NextResponse.json(
         {

@@ -1,126 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma, isDatabaseConnected } from "@/lib/prisma";
-import { verifyPassword, signAdminToken, ADMIN_COOKIE_NAME, hashPassword } from "@/lib/auth";
+import {
+  ADMIN_SESSION_HOURS,
+  adminCookieOptions,
+  authenticateAdmin,
+  isLoginLocked,
+  recordLoginAttempt,
+  signAdminToken,
+} from "@/lib/auth";
+import { clientIp } from "@/lib/gateway/http";
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const email = typeof body.email === "string" ? body.email.toLowerCase().trim() : "";
+    const password = typeof body.password === "string" ? body.password : "";
 
-    if (!email || !password) {
+    if (!email || !password || email.length > 254 || password.length > 200) {
+      return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
+    }
+
+    const ip = clientIp(req);
+    const userAgent = req.headers.get("user-agent");
+
+    // 1. Too many wrong passwords recently: refuse without checking the password
+    if (await isLoginLocked(email, ip)) {
       return NextResponse.json(
-        { error: "Email and password are required" },
-        { status: 400 }
+        { error: "Too many wrong attempts. Please wait 15 minutes and try again." },
+        { status: 429 }
       );
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
-    let adminUser = null;
-    let isPasswordValid = false;
+    // 2. Check the password (database, or the environment password for the main admin)
+    const admin = await authenticateAdmin(email, password);
+    await recordLoginAttempt({ email, ip, userAgent, success: Boolean(admin) });
 
-    // 1. Try PostgreSQL via Prisma
-    const isDbUp = await isDatabaseConnected();
-    if (isDbUp) {
-      try {
-        adminUser = await prisma.admin.findUnique({
-          where: { email: normalizedEmail },
-        });
-
-        if (adminUser) {
-          isPasswordValid = await verifyPassword(password, adminUser.passwordHash);
-        }
-      } catch (err) {
-        console.warn("Prisma admin query fallback:", err);
-      }
+    if (!admin) {
+      return NextResponse.json({ error: "Invalid admin email or password" }, { status: 401 });
     }
 
-    // 2. Default Admin Fallback (works out-of-the-box before DB seeding)
-    const defaultEmail = (process.env.ADMIN_DEFAULT_EMAIL || "admin@demobox.com").toLowerCase();
-    const validEmails = [defaultEmail, "admin@demobox.com", "admin@teabox.com"];
-    // No password is baked into the source for production: set ADMIN_DEFAULT_PASSWORD there.
-    const defaultPass =
-      process.env.ADMIN_DEFAULT_PASSWORD ||
-      (process.env.NODE_ENV === "production" ? "" : "adminTeabox2026!");
-
-    if (defaultPass && !adminUser && validEmails.includes(normalizedEmail)) {
-      if (password === defaultPass || password === "adminDemobox2026!") {
-        isPasswordValid = true;
-        adminUser = {
-          id: "adm_default_demobox_2026",
-          email: normalizedEmail,
-          name: "Demobox Master Admin",
-          role: "SUPER_ADMIN",
-          passwordHash: "",
-          avatar: null,
-          isActive: true,
-          lastLoginAt: new Date(),
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-
-        // If DB is connected, automatically persist this admin
-        if (isDbUp) {
-          try {
-            const pwdHash = await hashPassword(defaultPass);
-            await prisma.admin.upsert({
-              where: { email: normalizedEmail },
-              update: { lastLoginAt: new Date() },
-              create: {
-                email: normalizedEmail,
-                name: "Demobox Master Admin",
-                role: "SUPER_ADMIN",
-                passwordHash: pwdHash,
-              },
-            });
-          } catch (e) {
-            // ignore
-          }
-        }
-      }
-    }
-
-    if (!adminUser || !isPasswordValid) {
-      return NextResponse.json(
-        { error: "Invalid admin email or password" },
-        { status: 401 }
-      );
-    }
-
-    // 3. Sign JWT Token
-    const token = await signAdminToken({
-      adminId: adminUser.id,
-      email: adminUser.email,
-      name: adminUser.name,
-      role: adminUser.role,
-    });
-
-    // 4. Set HttpOnly Cookie
+    // 3. Sign the session and set it as an HttpOnly cookie
+    const token = await signAdminToken(admin);
     const response = NextResponse.json({
       status: "success",
       message: "Admin authentication successful",
       admin: {
-        id: adminUser.id,
-        email: adminUser.email,
-        name: adminUser.name,
-        role: adminUser.role,
+        id: admin.adminId,
+        email: admin.email,
+        name: admin.name,
+        role: admin.role,
       },
     });
-
-    response.cookies.set({
-      name: ADMIN_COOKIE_NAME,
-      value: token,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60, // 7 days
-    });
+    response.cookies.set({ ...adminCookieOptions(ADMIN_SESSION_HOURS * 60 * 60), value: token });
 
     return response;
-  } catch (error: any) {
+  } catch (error) {
     console.error("Admin login error:", error);
-    return NextResponse.json(
-      { error: error?.message || "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Sign-in failed. Please try again." }, { status: 500 });
   }
 }

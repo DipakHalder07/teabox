@@ -22,6 +22,8 @@ import {
 import { useCart } from "./context/CartContext";
 import { cleanIndianPhone } from "@/lib/validations/checkout";
 import TeaPayPanel, { cancelTeaPaySession, PaymentLeaveDialog, TeaPaySessionView } from "./TeaPayPanel";
+import { newOrderNumber } from "@/lib/orderNumber";
+import { useCodAvailable } from "@/lib/useCodAvailable";
 
 interface FastrrCheckoutModalProps {
   isOpen: boolean;
@@ -61,6 +63,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
 
   // Payment method (UPI via TeaPay or Cash on Delivery)
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "cod">("upi");
+  const [codAvailable, setCodAvailable] = useCodAvailable();
   const [upiApp, setUpiApp] = useState<"qr" | "gpay" | "phonepe" | "paytm" | "cred">("qr");
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderId, setOrderId] = useState("");
@@ -75,7 +78,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   // paymentConfirmed: the bank credit was matched (the order was created on the server). utrSubmitted: manual-UPI UTR, unverified.
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [utrSubmitted, setUtrSubmitted] = useState(false);
-  const persistOrderRef = useRef<(utr: string | null) => Promise<void>>(async () => {});
+  const persistOrderRef = useRef<(utr: string | null) => Promise<string | null>>(async () => null);
   // Leaving while the UPI payment is open asks first (PaymentLeaveDialog).
   const [leaveAction, setLeaveAction] = useState<null | (() => void)>(null);
   const [copiedVpa, setCopiedVpa] = useState(false);
@@ -237,7 +240,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
       alert("Please complete the required delivery address fields");
       return;
     }
-    const generatedId = orderId || `TB-${Math.floor(100000 + Math.random() * 900000)}`;
+    const generatedId = orderId || newOrderNumber();
     setOrderId(generatedId);
     setStep(2);
     initUpiSession(generatedId, finalTotal);
@@ -367,9 +370,10 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   }, [step]);
 
   // Saves the order. The server decides the payment status; the browser only reports the UTR it knows.
-  const persistOrder = async (utr: string | null) => {
+  // Returns an error message when the order was not saved.
+  const persistOrder = async (utr: string | null): Promise<string | null> => {
     try {
-      await fetch("/api/admin/orders", {
+      const res = await fetch("/api/admin/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -400,8 +404,14 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
           })),
         }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return data?.error || "Could not place the order. Please try again.";
+      }
+      return null;
     } catch (e) {
       console.warn("Order persistence log:", e);
+      return "Network error. Please check your connection and try again.";
     }
   };
   useEffect(() => {
@@ -429,7 +439,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   // Start over with a fresh payment (and order number).
   const restartUpiSession = () => {
     if (upiSession?.mode === "native" && upiSession.sessionId) cancelTeaPaySession(upiSession.sessionId);
-    const newOrderId = `TB-${Math.floor(100000 + Math.random() * 900000)}`;
+    const newOrderId = newOrderNumber();
     setOrderId(newOrderId);
     setUpiSession(null);
     initUpiSession(newOrderId, finalTotal);
@@ -439,7 +449,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
     if (upiSession?.mode === "native" && !paymentConfirmed) {
       if (upiSession.sessionId) cancelTeaPaySession(upiSession.sessionId);
       setUpiSession(null);
-      setOrderId(`TB-${Math.floor(100000 + Math.random() * 900000)}`);
+      setOrderId(newOrderNumber());
     }
     setPaymentMethod("cod");
   };
@@ -458,7 +468,16 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
     const currentTotal = latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal;
     setConfirmedTotal(currentTotal);
     setIsProcessing(true);
-    await persistOrder(confirmedUtr || null);
+    const error = await persistOrder(confirmedUtr || null);
+    if (error) {
+      setIsProcessing(false);
+      if (paymentMethod === "cod" && /cash on delivery/i.test(error)) {
+        setCodAvailable(false);
+        setPaymentMethod("upi");
+      }
+      alert(error);
+      return;
+    }
 
     setTimeout(() => {
       setIsProcessing(false);
@@ -1024,32 +1043,34 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                   )}
                 </div>
 
-                {/* 2. Cash On Delivery */}
-                <div
-                  onClick={handleSelectCod}
-                  className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
-                    paymentMethod === "cod"
-                      ? "border-[#1f3a2c] bg-[#fafafa]"
-                      : "border-[#e7e2d8] hover:border-[#1f3a2c]/60 bg-white"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-5 h-5 rounded-full border-2 border-[#1f3a2c] flex items-center justify-center">
-                        {paymentMethod === "cod" && (
-                          <div className="w-2.5 h-2.5 rounded-full bg-[#1f3a2c]" />
-                        )}
+                {/* 2. Cash On Delivery (can be switched off in Admin → Payment Gateway) */}
+                {codAvailable && (
+                  <div
+                    onClick={handleSelectCod}
+                    className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
+                      paymentMethod === "cod"
+                        ? "border-[#1f3a2c] bg-[#fafafa]"
+                        : "border-[#e7e2d8] hover:border-[#1f3a2c]/60 bg-white"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-5 h-5 rounded-full border-2 border-[#1f3a2c] flex items-center justify-center">
+                          {paymentMethod === "cod" && (
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#1f3a2c]" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Banknote size={19} className="text-[#016c2f]" />
+                          <span className="font-bold text-[15px] text-[#202020]">
+                            Cash on Delivery (COD)
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Banknote size={19} className="text-[#016c2f]" />
-                        <span className="font-bold text-[15px] text-[#202020]">
-                          Cash on Delivery (COD)
-                        </span>
-                      </div>
+                      <span className="text-[12px] text-[#8e8d8a] font-medium">+₹40 handling fee</span>
                     </div>
-                    <span className="text-[12px] text-[#8e8d8a] font-medium">+₹40 handling fee</span>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Final Amount & Pay Button */}

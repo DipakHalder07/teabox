@@ -80,7 +80,7 @@ export const utrVerificationSchema = z.object({
 export type UtrVerificationData = z.infer<typeof utrVerificationSchema>;
 
 export const orderCreationSchema = z.object({
-  orderNumber: z.string().min(1),
+  orderNumber: z.string().regex(/^[A-Z]{2,3}-[A-Z0-9-]{4,30}$/, "Invalid order number"),
   customerName: z.string().min(2),
   customerPhone: z.string().min(10),
   customerEmail: z.string().email().nullable().optional(),

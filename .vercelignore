@@ -1,0 +1,12 @@
+# Never upload local secrets or data when deploying with the `vercel` CLI
+# (Git deployments already skip these through .gitignore).
+.env
+.env.*
+!.env.example
+.pglite
+scratch
+*.tsbuildinfo
+
+# The WhatsApp service runs on its own always-on host, not on Vercel.
+# Its auth folder is the logged-in WhatsApp session.
+whatsapp-service

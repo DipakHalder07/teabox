@@ -7,6 +7,8 @@ import { sendOrderConfirmationEmail } from "@/lib/email";
 import { getSubmittedUtr } from "@/lib/manualUpi";
 import { alertCodOrder } from "@/lib/gateway/alerts";
 import { publicBaseUrl } from "@/lib/gateway/http";
+import { toPublicOrder } from "@/lib/publicOrder";
+import { getToggles } from "@/lib/gateway/toggles";
 
 export async function GET(req: NextRequest) {
   try {
@@ -81,12 +83,20 @@ export async function POST(req: NextRequest) {
     if (existingOrder) {
       return NextResponse.json({
         status: "success",
-        order: existingOrder,
+        order: toPublicOrder(existingOrder),
         duplicatePrevented: true,
       });
     }
 
-    // 2. Authoritative prices, coupon, shipping and COD fee (lib/orderPricing)
+    // 2. Cash on Delivery can be switched off in Admin → Payment Gateway
+    if (body.paymentMethod === "cod" && !(await getToggles()).cod) {
+      return NextResponse.json(
+        { error: "Cash on Delivery is not available right now. Please pay by UPI." },
+        { status: 400 }
+      );
+    }
+
+    // 3. Authoritative prices, coupon, shipping and COD fee (lib/orderPricing)
     const priced = priceOrder(body);
     const validatedItems = priced.items;
     const authoritativeSubtotal = priced.subtotal;
@@ -95,7 +105,7 @@ export async function POST(req: NextRequest) {
     const authoritativeCod = priced.codFee;
     const authoritativeTotal = priced.totalAmount;
 
-    // 3. Payment status is decided here, never by the browser. This route takes COD orders and
+    // 4. Payment status is decided here, never by the browser. This route takes COD orders and
     // the manual-UPI fallback; a customer-typed UTR stays PENDING until the admin reconciles it.
     // (Gateway UPI orders are created by lib/gateway when the money arrives.)
     const paymentStatus = "PENDING" as const;
@@ -164,7 +174,7 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error("Error creating order:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to create order" },
+      { error: "Failed to create order" },
       { status: 500 }
     );
   }
