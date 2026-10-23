@@ -207,7 +207,7 @@ export default function AdminOverviewPage() {
           </div>
           <div className="text-[26px] font-bold text-[#1f3a2c]">{upiOrders.length}</div>
           <span className="text-[12px] text-[#747576] mt-1 block">
-            VPA: 8617513004@ptaxis
+            Direct-to-bank UPI
           </span>
         </div>
 

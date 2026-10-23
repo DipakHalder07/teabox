@@ -276,3 +276,83 @@ export async function sendOrderConfirmationEmail(
     return { success: false };
   }
 }
+
+/**
+ * Generate Teabox Branded OTP Login Verification Email HTML
+ */
+function buildOtpNotificationHtml(code: string, email: string): string {
+  const codeDigits = code.split("").join(" ");
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Your Teabox Login Code</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #fafafa; margin: 0; padding: 28px 12px; color: #202020; }
+          .container { max-width: 500px; margin: 0 auto; background: #ffffff; border-radius: 14px; overflow: hidden; border: 1px solid #e7e2d8; box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+          .header { background: #1f3a2c; padding: 24px 20px; text-align: center; }
+          .header h1 { margin: 0; color: #02cb5a; font-size: 24px; font-weight: 800; letter-spacing: 2.5px; }
+          .header p { margin: 4px 0 0; color: #a3c4b2; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; }
+          .content { padding: 32px 24px; text-align: center; }
+          .title { font-size: 20px; font-weight: 700; color: #202020; margin: 0 0 8px; }
+          .subtitle { font-size: 13.5px; color: #5c5a52; line-height: 1.5; margin: 0 0 20px; }
+          .code-box { background: #f2faf5; border: 2px dashed #02cb5a; border-radius: 12px; padding: 20px; margin: 24px 0; }
+          .code-label { font-size: 11px; font-weight: 700; color: #5c5a52; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+          .code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 36px; font-weight: 800; letter-spacing: 10px; color: #016c2f; margin: 0; }
+          .info { font-size: 12.5px; color: #747576; line-height: 1.5; margin: 20px 0 0; }
+          .footer { background: #fafafa; border-top: 1px solid #f0ede6; padding: 16px 20px; text-align: center; font-size: 11.5px; color: #9c9a94; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>TEABOX</h1>
+            <p>Fresh from the Source</p>
+          </div>
+          <div class="content">
+            <h2 class="title">Your Verification Code</h2>
+            <p class="subtitle">
+              Hello,<br>
+              We received a request to sign in to your Teabox account using <strong>${email}</strong>.
+            </p>
+            <div class="code-box">
+              <div class="code-label">4-Digit Verification Code</div>
+              <div class="code">${codeDigits}</div>
+            </div>
+            <p class="info">
+              This code is valid for <strong>10 minutes</strong>.<br>
+              If you did not request this login code, you can safely ignore this email.
+            </p>
+          </div>
+          <div class="footer">
+            <p style="margin: 0;">Automated Teabox Storefront Security · © ${new Date().getFullYear()} Teabox India</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+/**
+ * Dispatch 4-digit OTP login verification code to customer's email
+ */
+export async function sendOtpVerificationEmail(
+  email: string,
+  code: string
+): Promise<{ success: boolean }> {
+  try {
+    const html = buildOtpNotificationHtml(code, email);
+    const result = await dispatchEmail({
+      to: email,
+      subject: `${code} is your Teabox verification code`,
+      html,
+    });
+    return { success: result.success };
+  } catch (err) {
+    console.error("[Email Dispatch] Error in sendOtpVerificationEmail:", err);
+    return { success: false };
+  }
+}
+

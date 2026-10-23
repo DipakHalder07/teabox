@@ -16,6 +16,7 @@ import {
   Phone,
   User,
   ShoppingBag,
+  Trash2,
 } from "lucide-react";
 import { StoredOrderData } from "@/lib/ordersDb";
 
@@ -45,6 +46,30 @@ export default function AdminOrdersPage() {
   useEffect(() => {
     fetchOrders();
   }, []);
+
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!confirm(`Are you sure you want to delete order ${orderId}? This cannot be undone.`)) {
+      return;
+    }
+    setIsUpdating(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setOrders((prev) => prev.filter((o) => o.id !== orderId));
+        setActiveOrder(null);
+        toast.success(`Order ${orderId} deleted successfully`);
+      } else {
+        toast.error(data?.error || "Failed to delete order");
+      }
+    } catch {
+      toast.error("Network error while deleting order");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const handleUpdateStatus = async (
     orderId: string,
@@ -488,6 +513,16 @@ export default function AdminOrdersPage() {
                   Confirm Payment (Mark PAID)
                 </button>
               )}
+
+              <button
+                type="button"
+                disabled={isUpdating}
+                onClick={() => handleDeleteOrder(activeOrder.id)}
+                className="px-3.5 py-2.5 bg-[#fff5f5] border border-[#feb2b2] hover:bg-[#ffe3e3] text-[#c53030] rounded-xl font-bold text-[13px] flex items-center gap-1.5 transition-colors cursor-pointer ml-auto"
+              >
+                <Trash2 size={15} />
+                <span>Delete Order</span>
+              </button>
             </div>
           </div>
         </div>

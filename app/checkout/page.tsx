@@ -33,24 +33,31 @@ import {
   CheckoutShippingFormData,
   cleanIndianPhone,
 } from "@/lib/validations/checkout";
+import YouPiGatewayPanel, {
+  cancelYouPiGatewaySession,
+  GatewayHealthInfo,
+} from "@/components/YouPiGatewayPanel";
 
+// "gateway": YouPI-PG flow (WhatsApp OTP, auto-confirm). "manual": shop QR + typed UTR.
 interface YouPiSessionData {
+  mode: "gateway" | "manual";
   paymentId: string;
   orderId: string;
   amount: number;
   currency: string;
-  vpa: string;
-  merchantName: string;
-  upiUri: string;
-  qrCodeDataUrl: string;
-  deepLinks: {
+  vpa?: string;
+  merchantName?: string;
+  upiUri?: string;
+  qrCodeDataUrl?: string;
+  deepLinks?: {
     gpay: string;
     phonepe: string;
     paytm: string;
     cred: string;
     generic: string;
   };
-  expiresAt: string;
+  expiresAt?: string;
+  health?: GatewayHealthInfo | null;
   status: string;
 }
 
@@ -81,6 +88,10 @@ export default function CheckoutPage() {
   const [confirmedUtr, setConfirmedUtr] = useState("");
   const [utrError, setUtrError] = useState("");
   const [isVerifyingUtr, setIsVerifyingUtr] = useState(false);
+  // paymentConfirmed: the gateway's signed webhook confirmed the money. utrSubmitted: customer typed a UTR (unverified).
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const [utrSubmitted, setUtrSubmitted] = useState(false);
+  const persistOrderRef = useRef<(utr: string | null) => Promise<void>>(async () => {});
   const [copiedVpa, setCopiedVpa] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState(600); // 10 minutes
 
@@ -241,28 +252,33 @@ export default function CheckoutPage() {
   // Poll for YouPI payment confirmation
   useEffect(() => {
     if (step !== 2 || paymentMethod !== "upi" || !orderId) return;
+    if (youPiSession?.mode === "gateway") return; // the gateway panel polls YouPI itself
 
+    let done = false;
     const interval = setInterval(async () => {
       try {
         const res = await fetch(
           `/api/payments/youpi/verify?orderId=${encodeURIComponent(orderId)}`
         );
         const data = await res.json();
-        if (data?.status === "COMPLETED") {
+        if (data?.status === "COMPLETED" && !done) {
+          done = true;
+          clearInterval(interval);
           if (data?.utr) setConfirmedUtr(data.utr);
+          setPaymentConfirmed(true);
+          await persistOrderRef.current(data?.utr || null);
           setIsProcessing(false);
           setStep(3);
           clearCart();
           toast.success("UPI Payment Confirmed!", {
             description: `Order #${orderId} verified successfully.`,
           });
-          clearInterval(interval);
         }
       } catch {}
     }, 3500);
 
     return () => clearInterval(interval);
-  }, [step, paymentMethod, orderId, clearCart]);
+  }, [step, paymentMethod, orderId, clearCart, youPiSession?.mode]);
 
   // Countdown timer for YouPI dynamic QR
   useEffect(() => {
@@ -307,11 +323,10 @@ export default function CheckoutPage() {
       const data = await res.json();
       if (data?.success) {
         setConfirmedUtr(clean);
+        setUtrSubmitted(true);
         setIsVerifyingUtr(false);
-        setStep(3);
-        clearCart();
-        toast.success("Payment Verified", {
-          description: `UTR ${clean} successfully verified.`,
+        toast.success("UTR Received", {
+          description: "Place your order. We dispatch once the payment matches our bank record.",
         });
       } else {
         setUtrError(data?.error || "Verification failed. Please check the 12-digit UTR.");
@@ -326,24 +341,9 @@ export default function CheckoutPage() {
     }
   };
 
-  const handlePlaceOrder = async () => {
-    setIsProcessing(true);
-    const assignedUtr =
-      confirmedUtr ||
-      youPiUtr.trim() ||
-      `4287${Math.floor(10000000 + Math.random() * 90000000)}`;
-    setConfirmedUtr(assignedUtr);
-
+  // Saves the order. The server decides the payment status; the browser only reports the UTR it knows.
+  const persistOrder = async (utr: string | null) => {
     try {
-      if (paymentMethod === "upi" && orderId) {
-        await fetch("/api/payments/youpi/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderId, utr: assignedUtr }),
-        });
-      }
-
-      // Persist order directly into PostgreSQL / Admin database
       await fetch("/api/admin/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -364,9 +364,8 @@ export default function CheckoutPage() {
           codFee,
           totalAmount: finalTotal,
           paymentMethod,
-          paymentStatus: paymentMethod === "upi" ? "PAID" : "PENDING",
-          orderStatus: "PROCESSING",
-          utrNumber: paymentMethod === "upi" ? assignedUtr : null,
+          utrNumber: paymentMethod === "upi" ? utr : null,
+          paymentId: paymentMethod === "upi" && youPiSession?.mode === "gateway" ? youPiSession.paymentId : null,
           items: cartItems.map((item) => ({
             productId: item.id,
             title: item.title,
@@ -377,13 +376,61 @@ export default function CheckoutPage() {
           })),
         }),
       });
-
-      toast.success("Order Placed Successfully!", {
-        description: `Order #${orderId} has been confirmed.`,
-      });
     } catch (e) {
       console.warn("Order persistence log:", e);
     }
+  };
+  useEffect(() => {
+    persistOrderRef.current = persistOrder;
+  });
+
+  // YouPI confirmed the money: save the order (the server re-checks with YouPI) and finish.
+  const handleGatewayPaid = async () => {
+    setPaymentConfirmed(true);
+    setIsProcessing(true);
+    await persistOrder(null);
+    setIsProcessing(false);
+    setStep(3);
+    clearCart();
+    toast.success("UPI Payment Confirmed!", {
+      description: `Order #${orderId} verified successfully.`,
+    });
+  };
+
+  // A gateway session belongs to one order number, so a retry starts under a new one.
+  const restartYouPiSession = () => {
+    const newOrderId = `TB-${Math.floor(100000 + Math.random() * 900000)}`;
+    setOrderId(newOrderId);
+    setYouPiSession(null);
+    initYouPiSession(newOrderId, finalTotal);
+  };
+
+  const handleSelectCod = () => {
+    if (youPiSession?.mode === "gateway" && !paymentConfirmed) {
+      cancelYouPiGatewaySession(youPiSession.paymentId);
+      setYouPiSession(null);
+      setOrderId(`TB-${Math.floor(100000 + Math.random() * 900000)}`);
+    }
+    setPaymentMethod("cod");
+  };
+
+  const handlePlaceOrder = async () => {
+    if (paymentMethod === "upi" && !paymentConfirmed && !utrSubmitted) {
+      const msg =
+        youPiSession?.mode === "gateway"
+          ? "Please complete the UPI payment above. Your order is placed automatically once it is received."
+          : "Please pay using the QR / UPI app, then enter your 12-digit UTR to place the order.";
+      setUtrError(msg);
+      toast.error("Payment needed", { description: msg });
+      return;
+    }
+
+    setIsProcessing(true);
+    await persistOrder(confirmedUtr || null);
+
+    toast.success("Order Placed Successfully!", {
+      description: `Order #${orderId} has been received.`,
+    });
 
     setTimeout(() => {
       setIsProcessing(false);
@@ -399,6 +446,8 @@ export default function CheckoutPage() {
     setYouPiUtr("");
     setConfirmedUtr("");
     setUtrError("");
+    setPaymentConfirmed(false);
+    setUtrSubmitted(false);
     setIsProcessing(false);
     setPaymentMethod("upi");
     router.push("/collections/all");
@@ -413,15 +462,9 @@ export default function CheckoutPage() {
         <div className="max-w-[1240px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href="/" className="hover:opacity-90 transition-opacity">
-              <Image
-                src="/assets/teabox-logo.svg"
-                alt="Teabox"
-                width={120}
-                height={32}
-                style={{ width: "auto" }}
-                className="h-7 sm:h-8 w-auto brightness-0 invert"
-                priority
-              />
+              <span className="font-stencil text-[22px] sm:text-[24px] font-bold tracking-wider text-white">
+                DEMOBOX
+              </span>
             </Link>
             <span className="text-[10.5px] sm:text-[11px] bg-[#02cb5a] text-[#1f3a2c] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
               Fastrr 1-Click Checkout
@@ -567,22 +610,26 @@ export default function CheckoutPage() {
               <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-3">
                 <span className="text-[#5c5a52]">Payment Status</span>
                 <span className="font-bold text-[#016c2f] uppercase">
-                  {paymentMethod === "cod" ? "COD (Pay on Delivery)" : "Paid Successfully"}
+                  {paymentMethod === "cod"
+                    ? "COD (Pay on Delivery)"
+                    : paymentConfirmed
+                      ? "Paid Successfully"
+                      : "Pending Bank Confirmation"}
                 </span>
               </div>
-              {paymentMethod === "upi" && (
+              {paymentMethod === "upi" && confirmedUtr && (
                 <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-3">
                   <span className="text-[#5c5a52]">UPI Ref / UTR</span>
                   <span className="font-mono font-bold text-[#1f3a2c] flex items-center gap-1.5">
-                    {confirmedUtr || youPiUtr || `UTR-${Date.now().toString().slice(-8)}`}
+                    {confirmedUtr}
                     <span className="bg-[#02cb5a]/20 text-[#016c2f] text-[10px] font-sans font-bold px-2 py-0.5 rounded">
-                      Verified
+                      {paymentConfirmed ? "Verified" : "Awaiting check"}
                     </span>
                   </span>
                 </div>
               )}
               <div className="flex items-center justify-between pt-1">
-                <span className="font-bold text-[#202020]">Amount Paid / Due</span>
+                <span className="font-bold text-[#202020]">{paymentMethod === "upi" && paymentConfirmed ? "Amount Paid" : "Order Total"}</span>
                 <span className="font-bold text-[18px] text-[#1f3a2c]">
                   ₹{finalTotal.toLocaleString("en-IN")}
                 </span>
@@ -592,7 +639,7 @@ export default function CheckoutPage() {
                 <div className="bg-[#f0f8f4] border border-[#bfdcc9] rounded-lg p-3 text-[12.5px] text-[#1f3a2c] flex items-center justify-between mt-2">
                   <span className="flex items-center gap-1.5">
                     <ShieldCheck size={15} className="text-[#016c2f]" />
-                    <span>Payment verified &amp; securely processed via UPI.</span>
+                    <span>{paymentConfirmed ? "Payment verified & securely processed via UPI." : "We will confirm your UPI payment against our bank record, then dispatch your order."}</span>
                   </span>
                   <span className="font-bold text-[#016c2f] whitespace-nowrap">100% Secure</span>
                 </div>
@@ -887,7 +934,25 @@ export default function CheckoutPage() {
                           </span>
                         </div>
 
-                        {paymentMethod === "upi" && (
+                        {paymentMethod === "upi" && youPiSession?.mode === "gateway" && (
+                          <div
+                            className="mt-4 pt-4 border-t border-[#e7e2d8]"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <YouPiGatewayPanel
+                              key={youPiSession.paymentId}
+                              paymentId={youPiSession.paymentId}
+                              phone={cleanIndianPhone(formValues.phone || "")}
+                              name={formValues.fullName || ""}
+                              amount={finalTotal}
+                              initialHealth={youPiSession.health}
+                              onPaid={handleGatewayPaid}
+                              onRetry={restartYouPiSession}
+                            />
+                          </div>
+                        )}
+
+                        {paymentMethod === "upi" && youPiSession?.mode !== "gateway" && (
                           <div
                             className="mt-4 pt-4 border-t border-[#e7e2d8] space-y-4"
                             onClick={(e) => e.stopPropagation()}
@@ -981,14 +1046,14 @@ export default function CheckoutPage() {
                                       Merchant UPI ID (VPA)
                                     </span>
                                     <span className="text-[13px] font-mono font-bold text-[#1f3a2c] truncate block">
-                                      {youPiSession?.vpa || "8617513004@ptaxis"}
+                                      {youPiSession?.vpa || ""}
                                     </span>
                                   </div>
                                   <button
                                     type="button"
                                     onClick={() =>
                                       handleCopyVpa(
-                                        youPiSession?.vpa || "8617513004@ptaxis"
+                                        youPiSession?.vpa || ""
                                       )
                                     }
                                     className="px-2.5 py-1 text-[11px] font-bold bg-white border border-[#e7e2d8] hover:border-[#1f3a2c] rounded flex items-center gap-1 transition-colors cursor-pointer shrink-0 text-[#202020]"
@@ -1018,7 +1083,7 @@ export default function CheckoutPage() {
                                 <label className="text-[12.5px] font-bold text-[#202020]">
                                   Done Paying? Enter 12-Digit UPI Ref / UTR Number:
                                 </label>
-                                <span className="text-[11px] text-[#747576]">Instant Confirm</span>
+                                <span className="text-[11px] text-[#747576]">Matched with our bank record</span>
                               </div>
                               <div className="flex gap-2">
                                 <input
@@ -1039,13 +1104,18 @@ export default function CheckoutPage() {
                                   ) : (
                                     <CheckCircle2 size={15} />
                                   )}
-                                  <span>Verify UTR</span>
+                                  <span>Submit UTR</span>
                                 </button>
                               </div>
                               {utrError && <p className="text-[12px] text-[#e53935]">{utrError}</p>}
+                              {utrSubmitted && (
+                                <p className="text-[12px] text-[#016c2f] font-semibold">
+                                  UTR received. Now place your order below. We dispatch once your payment is matched with our bank record.
+                                </p>
+                              )}
                               <div className="flex items-center gap-1.5 text-[11px] text-[#747576]">
                                 <span className="w-1.5 h-1.5 rounded-full bg-[#02cb5a] animate-pulse" />
-                                <span>Payments are verified automatically in real-time.</span>
+                                <span>Waiting for your payment. This screen updates when it is received.</span>
                               </div>
                             </form>
                           </div>
@@ -1054,7 +1124,7 @@ export default function CheckoutPage() {
 
                       {/* 2. Cash On Delivery */}
                       <div
-                        onClick={() => setPaymentMethod("cod")}
+                        onClick={handleSelectCod}
                         className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
                           paymentMethod === "cod"
                             ? "border-[#1f3a2c] bg-[#fafafa]"

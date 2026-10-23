@@ -170,7 +170,11 @@ function OrderTrackingContent() {
                     Order Confirmed!
                   </h1>
                   <span className="bg-[#02cb5a]/20 text-[#016c2f] text-[11px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                    {order.paymentStatus === "PAID" ? "Paid & Verified" : "COD Confirmed"}
+                    {order.paymentStatus === "PAID"
+                      ? "Paid & Verified"
+                      : order.paymentMethod === "upi"
+                        ? "Payment Pending"
+                        : "COD Confirmed"}
                   </span>
                 </div>
                 <p className="text-[14px] text-[#5c5a52] mt-1">
@@ -207,7 +211,9 @@ function OrderTrackingContent() {
                   <div className="font-bold text-[13.5px] text-[#1f3a2c]">Order Placed</div>
                   <div className="text-[11.5px] text-[#5c5a52] mt-0.5">
                     {order.paymentMethod === "upi"
-                      ? `Paid via UPI (${order.utrNumber ? `Ref: ${order.utrNumber}` : "Verified"})`
+                      ? order.paymentStatus === "PAID"
+                        ? `Paid via UPI (${order.utrNumber ? `Ref: ${order.utrNumber}` : "Verified"})`
+                        : `UPI payment awaiting bank confirmation${order.utrNumber ? ` (Ref: ${order.utrNumber})` : ""}`
                       : "Pay on Delivery (Cash / UPI)"}
                   </div>
                 </div>

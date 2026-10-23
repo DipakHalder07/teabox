@@ -34,6 +34,7 @@ export default function AdminPaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [copiedVpa, setCopiedVpa] = useState(false);
+  const [merchantVpa, setMerchantVpa] = useState("");
 
   const fetchPayments = async () => {
     setLoading(true);
@@ -43,6 +44,7 @@ export default function AdminPaymentsPage() {
       if (data?.payments) {
         setPayments(data.payments);
       }
+      if (data?.merchantVpa) setMerchantVpa(data.merchantVpa);
     } catch (err) {
       console.error("Failed to load payments:", err);
     } finally {
@@ -55,10 +57,11 @@ export default function AdminPaymentsPage() {
   }, []);
 
   const handleCopyVpa = () => {
-    navigator.clipboard.writeText("8617513004@ptaxis");
+    if (!merchantVpa) return;
+    navigator.clipboard.writeText(merchantVpa);
     setCopiedVpa(true);
     toast.success("Merchant UPI ID copied", {
-      description: "8617513004@ptaxis",
+      description: merchantVpa,
     });
     setTimeout(() => setCopiedVpa(false), 2000);
   };
@@ -101,7 +104,7 @@ export default function AdminPaymentsPage() {
           </span>
           <div className="flex items-center justify-between">
             <span className="font-mono font-bold text-[15px] text-[#1f3a2c]">
-              8617513004@ptaxis
+              {merchantVpa || "Not configured (set YOUPI_MERCHANT_VPA)"}
             </span>
             <button
               onClick={handleCopyVpa}

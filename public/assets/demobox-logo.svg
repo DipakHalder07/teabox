@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="160" viewBox="0 0 720 160" role="img" aria-labelledby="title desc">
+  <title id="title">demobox logo</title>
+  <desc id="desc">Minimal brand green cube icon and lowercase demobox wordmark.</desc>
+  <g transform="translate(0 8)" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Top Face (highlight) -->
+    <path d="M52 22 86 41 52 60 18 41Z" fill="#02cb5a" stroke="#02cb5a" stroke-width="1.5"/>
+    <!-- Left Face (mid-tone) -->
+    <path d="M18 47 47 64 47 105 18 88Z" fill="#02b851" stroke="#02b851" stroke-width="1.5"/>
+    <!-- Right Face (shadow) -->
+    <path d="M57 64 86 47 86 88 57 105Z" fill="#019f45" stroke="#019f45" stroke-width="1.5"/>
+    <!-- Center Crease -->
+    <path d="M52 60V101" fill="none" stroke="#01873b" stroke-width="1.5"/>
+  </g>
+  <text x="112" y="104" fill="#02cb5a" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="88" font-weight="600" letter-spacing="-3">demobox</text>
+</svg>

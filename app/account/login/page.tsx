@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Check, ArrowRight, Mail, Lock, KeyRound } from "lucide-react";
+import { Check, ArrowRight, Mail, Lock, KeyRound, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import SiteLayoutWrapper from "@/components/SiteLayoutWrapper";
 import {
@@ -23,8 +23,9 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState(["", "", "", ""]);
-  const [generatedOtp, setGeneratedOtp] = useState("");
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState("");
   const [inlineError, setInlineError] = useState<string | null>(null);
@@ -36,6 +37,29 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [forgotSent, setForgotSent] = useState(false);
+
+  // Check saved customer session on initial load
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("teabox_customer_user");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.email) {
+          setIsLoggedIn(true);
+          setLoggedInUser(parsed.email);
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Cooldown countdown timer for Resend Code
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const interval = setInterval(() => {
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resendCooldown]);
 
   // Restore saved cart from previous customer sessions
   const restoreCustomerCart = (userKey: string) => {
@@ -56,8 +80,8 @@ export default function LoginPage() {
     }
   };
 
-  // Step 1: Send 4-Digit Verification Code to Email
-  const handleSendEmailOtp = (e: React.FormEvent) => {
+  // Step 1: Send 4-Digit Verification Code to Email (Server-Side Dispatch)
+  const handleSendEmailOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setInlineError(null);
     const cleanEmail = email.trim().toLowerCase();
@@ -69,53 +93,128 @@ export default function LoginPage() {
       return;
     }
 
-    // Generate random 4-digit verification code
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-    setGeneratedOtp(code);
-    setOtpCode(["", "", "", ""]);
-    setOtpSent(true);
+    setIsSendingOtp(true);
+    try {
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+      const data = await res.json();
 
-    // Focus first input box shortly after render
-    setTimeout(() => {
-      otpInputsRef.current[0]?.focus();
-    }, 100);
+      if (!res.ok || !data.success) {
+        setInlineError(data.error || "Failed to send verification code.");
+        if (data.remainingCooldown) {
+          setResendCooldown(data.remainingCooldown);
+        }
+        return;
+      }
+
+      setOtpSent(true);
+      setOtpCode(["", "", "", ""]);
+      setResendCooldown(30); // 30-second resend cooldown
+      toast.success("Verification Code Sent", {
+        description: `We've sent a 4-digit code to ${cleanEmail}. Please check your inbox.`,
+      });
+
+      // Focus first input box shortly after render
+      setTimeout(() => {
+        otpInputsRef.current[0]?.focus();
+      }, 150);
+    } catch {
+      setInlineError("Network error. Please check your connection and try again.");
+    } finally {
+      setIsSendingOtp(false);
+    }
   };
 
-  // Step 2: Verify Code & Authenticate
-  const handleVerifyEmailOtp = (e?: React.FormEvent, codeOverride?: string) => {
+  // Step 2: Verify Code & Authenticate (Server-Side Verification)
+  const handleVerifyEmailOtp = async (e?: React.FormEvent, codeOverride?: string) => {
     if (e) e.preventDefault();
     setInlineError(null);
-    const entered = codeOverride || otpCode.join("");
+    const entered = (codeOverride || otpCode.join("")).trim();
 
     if (entered.length < 4) {
       setInlineError("Please enter the complete 4-digit verification code.");
       return;
     }
 
-    if (generatedOtp && entered !== generatedOtp && entered !== "1234") {
-      setInlineError(`Incorrect verification code. Please enter the code (Demo Code: ${generatedOtp}).`);
-      return;
-    }
-
-    // Verify code
     setIsVerifying(true);
-    setTimeout(() => {
-      setIsVerifying(false);
+    try {
+      const res = await fetch("/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, code: entered }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setInlineError(data.error || "Incorrect verification code. Please check your inbox.");
+        setOtpCode(["", "", "", ""]);
+        setTimeout(() => {
+          otpInputsRef.current[0]?.focus();
+        }, 100);
+        return;
+      }
+
+      // Success
+      const authenticatedEmail = data.user?.email || email;
       setIsLoggedIn(true);
-      setLoggedInUser(email);
-      restoreCustomerCart(email);
-    }, 400);
+      setLoggedInUser(authenticatedEmail);
+
+      try {
+        localStorage.setItem(
+          "teabox_customer_user",
+          JSON.stringify(data.user || { email: authenticatedEmail })
+        );
+      } catch {}
+
+      restoreCustomerCart(authenticatedEmail);
+      toast.success("Welcome to Teabox!", {
+        description: `Signed in as ${authenticatedEmail}`,
+      });
+    } catch {
+      setInlineError("Verification service error. Please try again.");
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
-  // Resend Verification Code
-  const handleResendOtp = () => {
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-    setGeneratedOtp(code);
-    setOtpCode(["", "", "", ""]);
-    toast.info("New Code Sent!", {
-      description: `A fresh 4-digit code was sent to ${email} (Demo Code: ${code})`,
-    });
-    otpInputsRef.current[0]?.focus();
+  // Resend Verification Code with 30s Cooldown
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0 || isSendingOtp) return;
+    setInlineError(null);
+    setIsSendingOtp(true);
+
+    try {
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setInlineError(data.error || "Failed to resend code.");
+        if (data.remainingCooldown) {
+          setResendCooldown(data.remainingCooldown);
+        }
+        return;
+      }
+
+      setOtpCode(["", "", "", ""]);
+      setResendCooldown(30);
+      toast.success("New Code Dispatched", {
+        description: `A fresh 4-digit code was sent to ${email}`,
+      });
+      setTimeout(() => {
+        otpInputsRef.current[0]?.focus();
+      }, 100);
+    } catch {
+      setInlineError("Network error while resending. Please try again.");
+    } finally {
+      setIsSendingOtp(false);
+    }
   };
 
   // Traditional Password Login
@@ -131,6 +230,9 @@ export default function LoginPage() {
 
     setIsLoggedIn(true);
     setLoggedInUser(email);
+    try {
+      localStorage.setItem("teabox_customer_user", JSON.stringify({ email }));
+    } catch {}
     restoreCustomerCart(email);
     toast.success("Welcome back!", {
       description: `Logged in as ${email}`,
@@ -152,6 +254,9 @@ export default function LoginPage() {
     setTimeout(() => {
       setIsLoggedIn(true);
       setLoggedInUser(email);
+      try {
+        localStorage.setItem("teabox_customer_user", JSON.stringify({ email, name }));
+      } catch {}
       restoreCustomerCart(email);
     }, 600);
   };
@@ -164,6 +269,10 @@ export default function LoginPage() {
         localStorage.setItem(sanitizedKey, JSON.stringify(cartItems));
       } catch {}
     }
+    try {
+      localStorage.removeItem("teabox_customer_user");
+      document.cookie = "teabox_customer_session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+    } catch {}
     setIsLoggedIn(false);
     setLoggedInUser("");
     setOtpSent(false);
@@ -244,16 +353,13 @@ export default function LoginPage() {
           viewMode === "quick" ? (
             <div className="relative w-full max-w-[440px] bg-white border border-[#e7e2d8] rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
               <div className="p-7 sm:p-9 text-center">
-                {/* Brand Logo */}
+                {/* Brand Logo: Clean text format */}
                 <div className="flex justify-center mb-6">
-                  <Image
-                    src="/assets/teabox-logo.svg"
-                    alt="Teabox"
-                    width={130}
-                    height={34}
-                    style={{ width: "auto" }}
-                    className="h-8 w-auto object-contain"
-                  />
+                  <Link href="/" className="inline-block">
+                    <span className="font-stencil text-[28px] font-bold tracking-wider text-[#02cb5a]">
+                      DEMOBOX
+                    </span>
+                  </Link>
                 </div>
 
                 {!otpSent ? (
@@ -295,10 +401,20 @@ export default function LoginPage() {
 
                     <button
                       type="submit"
-                      className="w-full bg-[#1f3a2c] hover:bg-[#14281e] text-white font-bold text-[14.5px] py-3.5 rounded-xl transition-all cursor-pointer shadow-sm tracking-wide flex items-center justify-center gap-2 mt-2"
+                      disabled={isSendingOtp}
+                      className="w-full bg-[#1f3a2c] hover:bg-[#14281e] disabled:opacity-75 text-white font-bold text-[14.5px] py-3.5 rounded-xl transition-all cursor-pointer shadow-sm tracking-wide flex items-center justify-center gap-2 mt-2"
                     >
-                      <span>Continue with Email</span>
-                      <ArrowRight size={16} />
+                      {isSendingOtp ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          <span>Sending Verification Code...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Continue with Email</span>
+                          <ArrowRight size={16} />
+                        </>
+                      )}
                     </button>
 
                     <p className="text-[11.5px] text-[#747576] leading-tight pt-1">
@@ -336,37 +452,19 @@ export default function LoginPage() {
                       <div className="w-12 h-12 rounded-full bg-[#02cb5a]/15 text-[#016c2f] flex items-center justify-center mx-auto mb-2">
                         <KeyRound size={22} />
                       </div>
-                      <h3 className="text-[18px] font-bold text-[#202020]">
+                      <h3 className="text-[19px] font-bold text-[#202020]">
                         Enter Verification Code
                       </h3>
                       <p className="text-[13px] text-[#5c5a52] mt-0.5">
                         We sent a 4-digit code to <strong className="text-[#1f3a2c]">{email}</strong>
                       </p>
-                    </div>
-
-                    {/* Demo Code Helper */}
-                    <div className="bg-[#f2faf5] border border-[#bfdcc9] rounded-xl p-3 my-2 text-center flex flex-col items-center gap-1.5">
-                      <div className="flex items-center gap-2 text-[13px] text-[#1f3a2c]">
-                        <span>Verification Code:</span>
-                        <span className="font-mono font-extrabold text-[16px] text-[#016c2f] tracking-widest bg-white px-2.5 py-0.5 rounded border border-[#bfdcc9]">
-                          {generatedOtp || "1234"}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const codeArr = (generatedOtp || "1234").split("").slice(0, 4);
-                          setOtpCode(codeArr);
-                          handleVerifyEmailOtp(undefined, codeArr.join(""));
-                        }}
-                        className="text-[12px] font-bold text-[#016c2f] hover:text-[#1f3a2c] underline cursor-pointer"
-                      >
-                        Click here to auto-fill & verify
-                      </button>
+                      <p className="text-[11.5px] text-[#747576] mt-1">
+                        Please check your email inbox (and spam folder)
+                      </p>
                     </div>
 
                     {/* 4-Digit Code Inputs */}
-                    <div className="flex justify-center gap-3 my-4">
+                    <div className="flex justify-center gap-3 my-5">
                       {[0, 1, 2, 3].map((index) => (
                         <input
                           key={index}
@@ -377,6 +475,7 @@ export default function LoginPage() {
                           inputMode="numeric"
                           maxLength={1}
                           required
+                          disabled={isVerifying}
                           value={otpCode[index]}
                           onChange={(e) => {
                             const val = e.target.value.replace(/\D/g, "");
@@ -417,7 +516,7 @@ export default function LoginPage() {
                               }
                             }
                           }}
-                          className="w-12 h-14 text-center text-[22px] font-bold border-2 border-[#1f3a2c] focus:border-[#02cb5a] rounded-xl outline-none focus:ring-2 focus:ring-[#02cb5a]/20 bg-white"
+                          className="w-13 h-15 sm:w-14 sm:h-16 text-center text-[24px] font-bold border-2 border-[#1f3a2c] focus:border-[#02cb5a] rounded-xl outline-none focus:ring-2 focus:ring-[#02cb5a]/20 bg-white shadow-2xs transition-all disabled:opacity-60"
                         />
                       ))}
                     </div>
@@ -431,10 +530,13 @@ export default function LoginPage() {
                     <button
                       type="submit"
                       disabled={isVerifying}
-                      className="w-full bg-[#02cb5a] hover:bg-[#02b851] text-[#1f3a2c] font-bold text-[15px] py-3.5 rounded-xl transition-all cursor-pointer shadow-sm tracking-wide flex items-center justify-center gap-2"
+                      className="w-full bg-[#02cb5a] hover:bg-[#02b851] disabled:opacity-75 text-[#1f3a2c] font-bold text-[15px] py-3.5 rounded-xl transition-all cursor-pointer shadow-sm tracking-wide flex items-center justify-center gap-2"
                     >
                       {isVerifying ? (
-                        "Verifying Code..."
+                        <>
+                          <Loader2 size={18} className="animate-spin" />
+                          <span>Verifying Code...</span>
+                        </>
                       ) : (
                         <>
                           <Check size={18} className="stroke-[3]" />
@@ -449,6 +551,7 @@ export default function LoginPage() {
                         onClick={() => {
                           setOtpSent(false);
                           setOtpCode(["", "", "", ""]);
+                          setInlineError(null);
                         }}
                         className="text-[#747576] hover:text-[#202020] underline cursor-pointer"
                       >
@@ -456,10 +559,19 @@ export default function LoginPage() {
                       </button>
                       <button
                         type="button"
+                        disabled={resendCooldown > 0 || isSendingOtp}
                         onClick={handleResendOtp}
-                        className="text-[#016c2f] font-bold hover:underline cursor-pointer"
+                        className={
+                          resendCooldown > 0 || isSendingOtp
+                            ? "text-[#8a8984] font-medium cursor-not-allowed"
+                            : "text-[#016c2f] font-bold hover:underline cursor-pointer"
+                        }
                       >
-                        Resend Code
+                        {isSendingOtp
+                          ? "Sending..."
+                          : resendCooldown > 0
+                          ? `Resend Code (${resendCooldown}s)`
+                          : "Resend Code"}
                       </button>
                     </div>
                   </form>

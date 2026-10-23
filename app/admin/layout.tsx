@@ -15,6 +15,7 @@ import {
   X,
   Database,
   RefreshCw,
+  Radio,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -93,6 +94,12 @@ export default function AdminLayout({
       icon: CreditCard,
       active: pathname.startsWith("/admin/payments"),
     },
+    {
+      label: "Payment Gateway",
+      href: "/admin/payment-gateway",
+      icon: Radio,
+      active: pathname.startsWith("/admin/payment-gateway"),
+    },
   ];
 
   return (
@@ -100,7 +107,7 @@ export default function AdminLayout({
       {/* Mobile Header */}
       <header className="md:hidden bg-[#1f3a2c] text-white px-4 py-3 flex items-center justify-between border-b border-[#2e5440]">
         <div className="flex items-center gap-2">
-          <span className="font-stencil text-[18px] tracking-wider text-white">TEABOX</span>
+          <span className="font-stencil text-[18px] tracking-wider text-white">DEMOBOX</span>
           <span className="bg-[#02cb5a] text-[#1f3a2c] text-[9px] font-bold px-1.5 py-0.5 rounded">
             ADMIN
           </span>
@@ -122,7 +129,7 @@ export default function AdminLayout({
         {/* Brand Logo & DB Badge */}
         <div className="p-5 border-b border-[#2e5440] hidden md:block">
           <Link href="/admin" className="flex items-center gap-2.5">
-            <span className="font-stencil text-[22px] tracking-wider text-white">TEABOX</span>
+            <span className="font-stencil text-[22px] tracking-wider text-white">DEMOBOX</span>
             <span className="bg-[#02cb5a] text-[#1f3a2c] text-[10px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider">
               ADMIN
             </span>
@@ -177,7 +184,7 @@ export default function AdminLayout({
                 {adminUser?.name || "Admin"}
               </span>
               <span className="text-[11px] text-[#02cb5a] block truncate">
-                {adminUser?.email || "admin@teabox.com"}
+                {adminUser?.email || "admin@demobox.com"}
               </span>
             </div>
             <button
@@ -196,7 +203,7 @@ export default function AdminLayout({
         {loading && (
           <div className="absolute inset-0 z-50 bg-[#0e1d15] flex flex-col items-center justify-center text-white min-h-[400px]">
             <RefreshCw size={32} className="animate-spin text-[#02cb5a] mb-3" />
-            <p className="text-[14px] text-white/70">Verifying Teabox Admin Session...</p>
+            <p className="text-[14px] text-white/70">Verifying Demobox Admin Session...</p>
           </div>
         )}
         {children}

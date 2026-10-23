@@ -3,11 +3,21 @@ import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.ADMIN_JWT_SECRET || "teabox_super_secure_admin_jwt_secret_key_2026_xyz"
-);
+// Resolved lazily so a missing secret fails at login time, not during `next build`.
+export function getJwtSecret(): Uint8Array {
+  const secret = process.env.ADMIN_JWT_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("ADMIN_JWT_SECRET is not set; admin sessions are disabled");
+      throw new Error("ADMIN_JWT_SECRET must be set in production");
+    }
+    return new TextEncoder().encode("dev-only-insecure-admin-jwt-secret");
+  }
+  return new TextEncoder().encode(secret);
+}
 
 export const ADMIN_COOKIE_NAME = "teabox_admin_session";
+const ADMIN_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER"];
 
 export interface AdminPayload {
   adminId: string;
@@ -39,7 +49,7 @@ export async function signAdminToken(payload: AdminPayload): Promise<string> {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 /**
@@ -47,8 +57,11 @@ export async function signAdminToken(payload: AdminPayload): Promise<string> {
  */
 export async function verifyAdminToken(token: string): Promise<AdminPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    return payload as unknown as AdminPayload;
+    const { payload } = await jwtVerify(token, getJwtSecret());
+    const admin = payload as unknown as AdminPayload;
+    // Customer login tokens are signed with the same key. Only a real admin payload may pass here.
+    if (!admin.adminId || !ADMIN_ROLES.includes(admin.role)) return null;
+    return admin;
   } catch (err) {
     return null;
   }

@@ -1,5 +1,9 @@
 import QRCode from "qrcode";
 import crypto from "crypto";
+import { getYouPiConfig } from "./youpiConfig";
+import { createGatewaySession, getGatewayHealth, GatewayHealth, GatewayStatus } from "./youpiGateway";
+
+export { getYouPiConfig };
 
 export interface YouPiCustomer {
   name: string;
@@ -14,7 +18,17 @@ export interface YouPiCreateOrderInput {
   note?: string;
 }
 
-export interface YouPiPaymentSession {
+export interface UpiDeepLinks {
+  gpay: string;
+  phonepe: string;
+  paytm: string;
+  cred: string;
+  generic: string;
+}
+
+/** Shop-generated QR; payment is confirmed by the admin against the bank statement. */
+export interface YouPiManualSession {
+  mode: "manual";
   paymentId: string;
   orderId: string;
   amount: number;
@@ -23,23 +37,35 @@ export interface YouPiPaymentSession {
   merchantName: string;
   upiUri: string;
   qrCodeDataUrl: string;
-  deepLinks: {
-    gpay: string;
-    phonepe: string;
-    paytm: string;
-    cred: string;
-    generic: string;
-  };
+  deepLinks: UpiDeepLinks;
   expiresAt: string;
   status: "PENDING" | "COMPLETED" | "EXPIRED";
 }
+
+/** Session on the YouPI-PG gateway: WhatsApp OTP, queued QR and automatic bank confirmation. */
+export interface YouPiGatewaySession {
+  mode: "gateway";
+  paymentId: string;
+  orderId: string;
+  amount: number;
+  currency: string;
+  status: GatewayStatus;
+  health: GatewayHealth | null;
+}
+
+export type YouPiPaymentSession = YouPiManualSession | YouPiGatewaySession;
 
 // Global persistent order cache (persists during Next.js hot-reloads)
 interface YouPiStoredOrder {
   orderId: string;
   amount: number;
   status: "PENDING" | "COMPLETED";
+  /** YouPI-PG payment session id, when the gateway is used */
+  paymentId?: string;
+  /** UTR confirmed by the gateway's signed webhook */
   utr?: string;
+  /** UTR typed in by the customer. Unverified: for admin reconciliation only */
+  submittedUtr?: string;
   paidAt?: string;
 }
 
@@ -54,60 +80,82 @@ if (process.env.NODE_ENV !== "production") {
   globalForYouPi.youPiOrders = inMemoryOrders;
 }
 
-export const getYouPiConfig = () => {
+function registerPendingPayment(orderId: string, amount: number, paymentId?: string) {
+  const existing = inMemoryOrders.get(orderId);
+  // Re-opening the payment screen must never undo a confirmed payment or drop a submitted UTR.
+  if (existing?.status === "COMPLETED") return;
+  inMemoryOrders.set(orderId, {
+    orderId,
+    amount,
+    status: "PENDING",
+    paymentId: paymentId || existing?.paymentId,
+    submittedUtr: existing?.submittedUtr,
+  });
+}
+
+/** App-specific intent links built from a standard upi://pay URI. */
+export function buildUpiDeepLinks(upiUri: string): UpiDeepLinks {
+  const query = upiUri.split("?")[1] || "";
   return {
-    baseUrl: process.env.YOUPI_PG_BASE_URL || "",
-    merchantVpa: process.env.YOUPI_MERCHANT_VPA || "8617513004@ptaxis",
-    merchantName: process.env.YOUPI_MERCHANT_NAME || "Teabox India",
-    publicKey: process.env.YOUPI_PUBLIC_KEY || "youpi_pk_live_teabox",
-    webhookSecret: process.env.YOUPI_WEBHOOK_SECRET || "youpi_whsec_teabox_secret_2026",
+    generic: upiUri,
+    gpay: `gpay://upi/pay?${query}`,
+    phonepe: `phonepe://pay?${query}`,
+    paytm: `paytmmp://pay?${query}`,
+    cred: `cred://pay?${query}`,
   };
-};
+}
+
+export function buildUpiQrDataUrl(upiUri: string) {
+  return QRCode.toDataURL(upiUri, {
+    errorCorrectionLevel: "H",
+    margin: 2,
+    scale: 8,
+    color: {
+      dark: "#1f3a2c", // Teabox luxury forest green
+      light: "#ffffff",
+    },
+  });
+}
 
 /**
- * Creates a YouPI-PG payment session.
- * If YOUPI_PG_BASE_URL is set, it attempts to proxy to the external YouPI-PG node server.
- * Otherwise, it performs zero-latency native dynamic UPI QR & intent generation.
+ * Creates a payment session.
+ * With YOUPI_PG_BASE_URL set, the session is created on the YouPI-PG gateway (WhatsApp OTP,
+ * queue, automatic confirmation). If the gateway is not configured or unreachable, the shop
+ * falls back to its own UPI QR, confirmed manually by the admin.
  */
 export async function createYouPiPayment(
   input: YouPiCreateOrderInput
 ): Promise<YouPiPaymentSession> {
   const config = getYouPiConfig();
-  const paymentId = `PAY_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
 
-  // 1. Try forwarding to external self-hosted YouPI-PG server if configured
+  // 1. YouPI-PG gateway
   if (config.baseUrl) {
     try {
-      const response = await fetch(`${config.baseUrl}/v1/payments/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.publicKey}`,
-        },
-        body: JSON.stringify({
-          orderId: input.orderId,
-          amount: input.amount,
-          currency: "INR",
-          customer: input.customer,
-          note: input.note || `Teabox Order ${input.orderId}`,
-        }),
-        signal: AbortSignal.timeout(3000),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data?.data?.qrCodeDataUrl || data?.data?.upiUri) {
-          return data.data;
-        }
-      }
-    } catch {
-      // Fallback smoothly to direct YouPI-PG standard algorithm
-      console.warn("External YouPI-PG server unreachable, switching to native YouPI-PG engine");
+      const [gateway, health] = await Promise.all([
+        createGatewaySession({ orderId: input.orderId, amount: input.amount, note: input.note }),
+        getGatewayHealth().catch(() => null),
+      ]);
+      registerPendingPayment(input.orderId, input.amount, gateway.paymentId);
+      return {
+        mode: "gateway",
+        paymentId: gateway.paymentId,
+        orderId: input.orderId,
+        amount: input.amount,
+        currency: "INR",
+        status: gateway.status,
+        health,
+      };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.warn(`[YouPI-PG] Gateway unavailable (${reason}); using manual UPI mode`);
     }
   }
 
-  // 2. Standard YouPI-PG NPCI UPI Protocol implementation
+  // 2. Manual mode: shop-generated NPCI UPI QR
+  if (!config.merchantVpa) {
+    throw new Error("UPI payments are not configured: set YOUPI_MERCHANT_VPA");
+  }
+
   const formattedAmount = input.amount.toFixed(2);
   const note = input.note || `Teabox ${input.orderId}`;
 
@@ -119,107 +167,100 @@ export async function createYouPiPayment(
     note
   )}&cu=INR`;
 
-  // Dynamic QR Code generation (High error correction, clean margin)
-  const qrCodeDataUrl = await QRCode.toDataURL(upiUri, {
-    errorCorrectionLevel: "H",
-    margin: 2,
-    scale: 8,
-    color: {
-      dark: "#1f3a2c", // Teabox luxury forest green
-      light: "#ffffff",
-    },
-  });
-
-  // App-specific intent schemes
-  const deepLinks = {
-    generic: upiUri,
-    gpay: `gpay://upi/pay?pa=${encodeURIComponent(config.merchantVpa)}&pn=${encodeURIComponent(
-      config.merchantName
-    )}&am=${formattedAmount}&tr=${encodeURIComponent(input.orderId)}&tn=${encodeURIComponent(
-      note
-    )}&cu=INR`,
-    phonepe: `phonepe://pay?pa=${encodeURIComponent(config.merchantVpa)}&pn=${encodeURIComponent(
-      config.merchantName
-    )}&am=${formattedAmount}&tr=${encodeURIComponent(input.orderId)}&tn=${encodeURIComponent(
-      note
-    )}&cu=INR`,
-    paytm: `paytmmp://pay?pa=${encodeURIComponent(config.merchantVpa)}&pn=${encodeURIComponent(
-      config.merchantName
-    )}&am=${formattedAmount}&tr=${encodeURIComponent(input.orderId)}&tn=${encodeURIComponent(
-      note
-    )}&cu=INR`,
-    cred: `cred://pay?pa=${encodeURIComponent(config.merchantVpa)}&pn=${encodeURIComponent(
-      config.merchantName
-    )}&am=${formattedAmount}&tr=${encodeURIComponent(input.orderId)}&tn=${encodeURIComponent(
-      note
-    )}&cu=INR`,
-  };
-
-  // Register in local store
-  inMemoryOrders.set(input.orderId, {
-    orderId: input.orderId,
-    amount: input.amount,
-    status: "PENDING",
-  });
+  registerPendingPayment(input.orderId, input.amount);
 
   return {
-    paymentId,
+    mode: "manual",
+    paymentId: `PAY_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     orderId: input.orderId,
     amount: input.amount,
     currency: "INR",
     vpa: config.merchantVpa,
     merchantName: config.merchantName,
     upiUri,
-    qrCodeDataUrl,
-    deepLinks,
-    expiresAt,
+    qrCodeDataUrl: await buildUpiQrDataUrl(upiUri),
+    deepLinks: buildUpiDeepLinks(upiUri),
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 minutes
     status: "PENDING",
   };
 }
 
 /**
- * Verify payment status (via UTR or webhook status)
+ * Read-only payment status. Only the gateway's signed webhook can make this COMPLETED.
  */
-export function verifyPaymentStatus(orderId: string, utr?: string) {
+export function getPaymentStatus(orderId: string) {
   const existing = inMemoryOrders.get(orderId);
-  if (!existing) {
-    if (utr && utr.length >= 8) {
-      inMemoryOrders.set(orderId, {
-        orderId,
-        amount: 0,
-        status: "COMPLETED",
-        utr,
-        paidAt: new Date().toISOString(),
-      });
-      return { success: true, status: "COMPLETED", utr };
-    }
-    return { success: false, status: "NOT_FOUND" };
-  }
-
-  if (utr) {
-    existing.status = "COMPLETED";
-    existing.utr = utr;
-    existing.paidAt = new Date().toISOString();
-    inMemoryOrders.set(orderId, existing);
-    return { success: true, status: "COMPLETED", utr };
-  }
-
+  if (!existing) return { status: "NOT_FOUND" as const };
   return {
-    success: existing.status === "COMPLETED",
     status: existing.status,
-    utr: existing.utr,
+    amount: existing.amount,
+    paymentId: existing.paymentId,
+    utr: existing.status === "COMPLETED" ? existing.utr : undefined,
+    submittedUtr: existing.submittedUtr,
   };
 }
 
 /**
- * Cryptographic verification for incoming YouPI-PG webhooks
+ * Records a customer-typed UTR. This does NOT confirm payment: it is stored as
+ * unverified so the admin can reconcile it against the bank statement.
+ */
+export function submitCustomerUtr(
+  orderId: string,
+  utr: string
+): "OK" | "NOT_FOUND" | "DUPLICATE" {
+  const existing = inMemoryOrders.get(orderId);
+  if (!existing) return "NOT_FOUND";
+
+  for (const other of inMemoryOrders.values()) {
+    if (other.orderId !== orderId && (other.utr === utr || other.submittedUtr === utr)) {
+      return "DUPLICATE";
+    }
+  }
+
+  if (existing.status !== "COMPLETED") existing.submittedUtr = utr;
+  return "OK";
+}
+
+/**
+ * Marks a payment as COMPLETED. Call this ONLY from the signature-verified webhook.
+ * `paidAmount` is the amount the gateway says it received.
+ */
+export function markPaymentCompleted(
+  orderId: string,
+  utr: string | undefined,
+  paidAmount: number
+): { ok: boolean; reason?: string } {
+  const existing = inMemoryOrders.get(orderId);
+  if (existing && existing.amount > 0 && Math.abs(existing.amount - paidAmount) >= 1) {
+    return {
+      ok: false,
+      reason: `amount mismatch: session ₹${existing.amount}, received ₹${paidAmount}`,
+    };
+  }
+
+  inMemoryOrders.set(orderId, {
+    orderId,
+    amount: paidAmount,
+    status: "COMPLETED",
+    utr,
+    paymentId: existing?.paymentId,
+    submittedUtr: existing?.submittedUtr,
+    paidAt: new Date().toISOString(),
+  });
+  return { ok: true };
+}
+
+/**
+ * Cryptographic verification for incoming YouPI-PG webhooks.
+ * YouPI sends `X-Gateway-Signature: sha256=<hex hmac-sha256 of the raw body>`.
  */
 export function verifyYouPiSignature(rawBody: string, signature: string, secret: string): boolean {
   if (!signature || !secret) return false;
   try {
-    const hmac = crypto.createHmac("sha256", secret);
-    const digest = hmac.update(rawBody).digest("hex");
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest));
+    const received = signature.trim().replace(/^sha256=/i, "").toLowerCase();
+    const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+    if (received.length !== expected.length) return false;
+    return crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected));
   } catch {
     return false;
   }

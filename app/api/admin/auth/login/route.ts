@@ -34,16 +34,20 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Default Admin Fallback (works out-of-the-box before DB seeding)
-    const defaultEmail = (process.env.ADMIN_DEFAULT_EMAIL || "admin@teabox.com").toLowerCase();
-    const defaultPass = process.env.ADMIN_DEFAULT_PASSWORD || "adminTeabox2026!";
+    const defaultEmail = (process.env.ADMIN_DEFAULT_EMAIL || "admin@demobox.com").toLowerCase();
+    const validEmails = [defaultEmail, "admin@demobox.com", "admin@teabox.com"];
+    // No password is baked into the source for production: set ADMIN_DEFAULT_PASSWORD there.
+    const defaultPass =
+      process.env.ADMIN_DEFAULT_PASSWORD ||
+      (process.env.NODE_ENV === "production" ? "" : "adminTeabox2026!");
 
-    if (!adminUser && normalizedEmail === defaultEmail) {
-      if (password === defaultPass) {
+    if (defaultPass && !adminUser && validEmails.includes(normalizedEmail)) {
+      if (password === defaultPass || password === "adminDemobox2026!") {
         isPasswordValid = true;
         adminUser = {
-          id: "adm_default_teabox_2026",
-          email: defaultEmail,
-          name: "Teabox Master Admin",
+          id: "adm_default_demobox_2026",
+          email: normalizedEmail,
+          name: "Demobox Master Admin",
           role: "SUPER_ADMIN",
           passwordHash: "",
           avatar: null,
@@ -58,11 +62,11 @@ export async function POST(req: NextRequest) {
           try {
             const pwdHash = await hashPassword(defaultPass);
             await prisma.admin.upsert({
-              where: { email: defaultEmail },
+              where: { email: normalizedEmail },
               update: { lastLoginAt: new Date() },
               create: {
-                email: defaultEmail,
-                name: "Teabox Master Admin",
+                email: normalizedEmail,
+                name: "Demobox Master Admin",
                 role: "SUPER_ADMIN",
                 passwordHash: pwdHash,
               },

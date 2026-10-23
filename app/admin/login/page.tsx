@@ -39,7 +39,7 @@ export default function AdminLoginPage() {
   };
 
   const handleUseDemoCredentials = () => {
-    setEmail("admin@teabox.com");
+    setEmail("admin@demobox.com");
     setPassword("adminTeabox2026!");
     setError("");
   };
@@ -59,7 +59,7 @@ export default function AdminLoginPage() {
             <span>Secure Admin Portal</span>
           </div>
           <h1 className="font-stencil text-[30px] font-bold tracking-wider text-white">
-            TEABOX
+            DEMOBOX
           </h1>
           <p className="text-[13px] text-white/70 mt-1">
             Store Administration · PostgreSQL &amp; Prisma ORM
@@ -86,7 +86,7 @@ export default function AdminLoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@teabox.com"
+                placeholder="admin@demobox.com"
                 className="w-full bg-transparent text-[14px] outline-none text-white placeholder-white/40"
               />
             </div>
@@ -141,7 +141,7 @@ export default function AdminLoginPage() {
           </button>
           <div className="mt-2 text-[11px] text-white/50 flex items-center justify-center gap-1.5">
             <Database size={11} className="text-[#02cb5a]" />
-            <span>admin@teabox.com · adminTeabox2026!</span>
+            <span>admin@demobox.com · adminTeabox2026!</span>
           </div>
         </div>
       </div>

@@ -69,17 +69,12 @@ export default function Footer() {
         <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_repeat(5,minmax(0,1fr))] gap-6 lg:gap-6 xl:gap-8 pb-6 sm:pb-8">
           {/* Brand & Newsletter Column */}
           <div className="flex flex-col gap-2.5 max-w-[380px]">
-            {/* Logo */}
-            <div className="brightness-0 invert opacity-95">
-              <Image
-                src="/assets/teabox-logo.svg"
-                alt="Teabox India"
-                width={110}
-                height={26}
-                style={{ width: "auto" }}
-                className="h-6 w-auto object-contain"
-              />
-            </div>
+            {/* Logo: Clean text format */}
+            <Link href="/" className="inline-block py-0.5">
+              <span className="font-stencil text-[24px] font-bold tracking-wider text-white hover:text-[#02cb5a] transition-colors">
+                DEMOBOX
+              </span>
+            </Link>
 
             <p className="text-[11.5px] sm:text-[12px] tracking-[1.2px] uppercase text-[#8fa396] font-semibold mt-1">
               FRESH FROM THE GARDENS OF INDIA.

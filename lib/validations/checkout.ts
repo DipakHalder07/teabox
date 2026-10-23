@@ -101,6 +101,8 @@ export const orderCreationSchema = z.object({
     .enum(["PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"])
     .default("PROCESSING"),
   utrNumber: z.string().nullable().optional(),
+  // YouPI-PG payment session id; the server confirms it with the gateway
+  paymentId: z.string().max(64).nullable().optional(),
   notes: z.string().nullable().optional(),
   items: z.array(
     z.object({

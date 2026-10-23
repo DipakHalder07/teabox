@@ -84,34 +84,22 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
             </button>
           </div>
 
-          {/* Mobile Centered Brand Logo */}
+          {/* Mobile Centered Brand Logo: Clean text format */}
           <div className="lg:hidden absolute left-1/2 -translate-x-1/2 flex items-center">
             <Link href="/" className="inline-block relative py-1">
-              <Image
-                src="/assets/teabox-logo.svg"
-                alt="Teabox India"
-                width={120}
-                height={28}
-                priority
-                style={{ width: "auto" }}
-                className="h-[25px] sm:h-[28px] w-auto object-contain"
-              />
+              <span className="font-stencil text-[22px] sm:text-[24px] font-bold tracking-wider text-[#02cb5a] hover:opacity-90 transition-opacity">
+                DEMOBOX
+              </span>
             </Link>
           </div>
 
           {/* Desktop Left Group: Brand Logo on Far Left + Navigation Items */}
           <div className="hidden lg:flex items-center gap-7 xl:gap-9">
-            {/* Desktop Brand Logo */}
+            {/* Desktop Brand Logo: Clean text format */}
             <Link href="/" className="inline-block relative py-1 shrink-0">
-              <Image
-                src="/assets/teabox-logo.svg"
-                alt="Teabox India"
-                width={128}
-                height={28}
-                priority
-                style={{ width: "auto" }}
-                className="h-[25px] xl:h-[27px] w-auto object-contain"
-              />
+              <span className="font-stencil text-[24px] xl:text-[26px] font-bold tracking-wider text-[#02cb5a] hover:opacity-90 transition-opacity">
+                DEMOBOX
+              </span>
             </Link>
 
             {/* Desktop Navigation Links: Exact Live Teabox font-size 18px / font-weight 600 */}

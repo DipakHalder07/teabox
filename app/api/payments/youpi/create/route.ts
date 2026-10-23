@@ -13,9 +13,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
+    }
+
     const session = await createYouPiPayment({
       orderId,
-      amount: Number(amount),
+      amount: numericAmount,
       customer,
       note,
     });

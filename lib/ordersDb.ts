@@ -46,111 +46,12 @@ const globalForOrders = globalThis as unknown as {
 
 if (!globalForOrders.inMemoryOrders) {
   globalForOrders.inMemoryOrders = new Map<string, StoredOrderData>();
-  
-  // Seed sample initial mock orders so the admin dashboard immediately has rich data
-  const sampleOrders: StoredOrderData[] = [
-    {
-      id: "TBX-2026-98124",
-      orderNumber: "TBX-2026-98124",
-      customerName: "Aarav Mehta",
-      customerPhone: "9820112233",
-      customerEmail: "aarav.mehta@example.com",
-      address: "B-402, Highmont Apts, Baner",
-      city: "Pune",
-      state: "Maharashtra",
-      pincode: "411045",
-      subtotal: 1199,
-      discountAmount: 120,
-      couponCode: "WELCOME10",
-      shippingFee: 0,
-      codFee: 0,
-      totalAmount: 1079,
-      paymentMethod: "upi",
-      paymentStatus: "PAID",
-      orderStatus: "PROCESSING",
-      utrNumber: "428719283401",
-      items: [
-        {
-          title: "The Ramayana Chai Collection (Ayurvedic Chai Blends)",
-          weight: "150G",
-          price: 1199,
-          quantity: 1,
-          image: "https://in.teabox.com/cdn/shop/files/TheRamayanaChaiCollectionListingImage.jpg",
-        },
-      ],
-      createdAt: new Date(Date.now() - 1000 * 60 * 35),
-      updatedAt: new Date(Date.now() - 1000 * 60 * 35),
-    },
-    {
-      id: "TBX-2026-98125",
-      orderNumber: "TBX-2026-98125",
-      customerName: "Pooja Hegde",
-      customerPhone: "9876543210",
-      customerEmail: "pooja.h@example.com",
-      address: "123 Connaught Place, Inner Circle",
-      city: "New Delhi",
-      state: "Delhi",
-      pincode: "110001",
-      subtotal: 449,
-      discountAmount: 0,
-      shippingFee: 0,
-      codFee: 40,
-      totalAmount: 489,
-      paymentMethod: "cod",
-      paymentStatus: "PENDING",
-      orderStatus: "SHIPPED",
-      trackingNumber: "CP-IND-8849201",
-      trackingUrl: "/track?tracking_id=CP-IND-8849201",
-      items: [
-        {
-          title: "Abhay Ras Chai",
-          weight: "150G",
-          price: 449,
-          quantity: 1,
-          image: "https://in.teabox.com/cdn/shop/files/AbhayRasChaiListingImage.jpg",
-        },
-      ],
-      createdAt: new Date(Date.now() - 1000 * 60 * 120),
-      updatedAt: new Date(Date.now() - 1000 * 60 * 45),
-    },
-    {
-      id: "TBX-2026-98126",
-      orderNumber: "TBX-2026-98126",
-      customerName: "Vikram Singhania",
-      customerPhone: "9819283746",
-      customerEmail: "vikram.s@example.com",
-      address: "42, Ballygunge Circular Road",
-      city: "Kolkata",
-      state: "West Bengal",
-      pincode: "700019",
-      subtotal: 667,
-      discountAmount: 0,
-      shippingFee: 0,
-      codFee: 0,
-      totalAmount: 667,
-      paymentMethod: "upi",
-      paymentStatus: "PAID",
-      orderStatus: "DELIVERED",
-      utrNumber: "428799112233",
-      trackingNumber: "CP-IND-7729104",
-      trackingUrl: "/track?tracking_id=CP-IND-7729104",
-      items: [
-        {
-          title: "Organic Darjeeling Green Tea",
-          weight: "300G",
-          price: 667,
-          quantity: 1,
-          image: "https://in.teabox.com/cdn/shop/files/organic-darjeeling-green-tea-1_500x.jpg",
-        },
-      ],
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
-      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 5),
-    },
-  ];
+}
 
-  for (const o of sampleOrders) {
-    globalForOrders.inMemoryOrders.set(o.id, o);
-  }
+// Purge any legacy sample mock/demo orders from memory cache
+export const DEMO_ORDER_IDS = ["TBX-2026-98124", "TBX-2026-98125", "TBX-2026-98126"];
+for (const demoId of DEMO_ORDER_IDS) {
+  globalForOrders.inMemoryOrders.delete(demoId);
 }
 
 /**
@@ -224,20 +125,51 @@ export async function getAllOrders(): Promise<StoredOrderData[]> {
     const isDbUp = await isDatabaseConnected();
     if (isDbUp) {
       const orders = await prisma.order.findMany({
+        where: {
+          id: { notIn: DEMO_ORDER_IDS },
+        },
         include: { items: true, payments: true },
         orderBy: { createdAt: "desc" },
       });
-      if (orders.length > 0) {
-        return orders as unknown as StoredOrderData[];
-      }
+      return orders as unknown as StoredOrderData[];
     }
   } catch (err) {
     console.warn("PostgreSQL order fetch warning (using memory store):", err);
   }
 
-  // Fallback to in-memory orders sorted by createdAt desc
-  const list = Array.from(globalForOrders.inMemoryOrders?.values() || []);
+  // Fallback to in-memory orders sorted by createdAt desc (excluding any demo orders)
+  const list = Array.from(globalForOrders.inMemoryOrders?.values() || []).filter(
+    (o) =>
+      !DEMO_ORDER_IDS.includes(o.id) &&
+      !o.id.startsWith("TBX-2026-9812") &&
+      o.customerEmail !== "aarav.mehta@example.com"
+  );
   return list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+/**
+ * Delete an order by ID from memory and database
+ */
+export async function deleteOrder(orderId: string): Promise<boolean> {
+  let deleted = false;
+  if (globalForOrders.inMemoryOrders?.has(orderId)) {
+    globalForOrders.inMemoryOrders.delete(orderId);
+    deleted = true;
+  }
+
+  try {
+    const isDbUp = await isDatabaseConnected();
+    if (isDbUp) {
+      await prisma.order.delete({
+        where: { id: orderId },
+      });
+      deleted = true;
+    }
+  } catch (err) {
+    console.warn("PostgreSQL order delete warning:", err);
+  }
+
+  return deleted;
 }
 
 /**
@@ -289,6 +221,10 @@ export async function updateOrderStatus(
  * Fetch a single order by ID or orderNumber
  */
 export async function getOrderById(idOrNumber: string): Promise<StoredOrderData | null> {
+  if (DEMO_ORDER_IDS.includes(idOrNumber)) {
+    return null;
+  }
+
   // Check PostgreSQL first if connected
   try {
     const isDbUp = await isDatabaseConnected();
@@ -296,6 +232,7 @@ export async function getOrderById(idOrNumber: string): Promise<StoredOrderData 
       const order = await prisma.order.findFirst({
         where: {
           OR: [{ id: idOrNumber }, { orderNumber: idOrNumber }],
+          NOT: { id: { in: DEMO_ORDER_IDS } },
         },
         include: { items: true, payments: true },
       });
@@ -361,6 +298,7 @@ export async function searchOrders(query: string): Promise<StoredOrderData[]> {
     const matched: StoredOrderData[] = [];
     const qLower = q.toLowerCase();
     for (const ord of globalForOrders.inMemoryOrders.values()) {
+      if (DEMO_ORDER_IDS.includes(ord.id)) continue;
       const matchId = ord.id.toLowerCase() === qLower || ord.orderNumber.toLowerCase() === qLower;
       const matchTracking = ord.trackingNumber?.toLowerCase() === qLower;
       const matchPhone = cleanPhone && cleanPhone.length >= 6 && ord.customerPhone.includes(cleanPhone);

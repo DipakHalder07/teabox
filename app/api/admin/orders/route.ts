@@ -4,6 +4,8 @@ import { PRODUCTS } from "@/data/products";
 import { verifyAdminRequest } from "@/lib/auth";
 import { orderCreationSchema, cleanIndianPhone } from "@/lib/validations/checkout";
 import { sendOrderConfirmationEmail } from "@/lib/email";
+import { getPaymentStatus } from "@/lib/youpi";
+import { getGatewayPayment, isGatewayConfigured } from "@/lib/youpiGateway";
 
 export async function GET(req: NextRequest) {
   try {
@@ -128,8 +130,52 @@ export async function POST(req: NextRequest) {
       authoritativeSubtotal - authoritativeDiscount + authoritativeShipping + authoritativeCod
     );
 
+    // 5. Payment status is decided here, never by the browser. A UPI order is PAID only when the
+    // YouPI gateway (asked directly, or via its signed webhook) confirms the right amount. A
+    // customer-typed UTR stays unverified (PENDING) until the admin reconciles it.
+    let paymentStatus: "PAID" | "PENDING" = "PENDING";
+    let utrNumber: string | null = null;
+    let notes = body.notes || null;
+    const addNote = (note: string) => {
+      notes = [notes, note].filter(Boolean).join(" | ");
+    };
+    if (body.paymentMethod === "upi") {
+      const payment = getPaymentStatus(body.orderNumber);
+
+      // Gateway checkout: ask YouPI directly (server-to-server) instead of relying on memory.
+      let gatewayDecided = false;
+      if (body.paymentId && isGatewayConfigured()) {
+        try {
+          const gateway = await getGatewayPayment(body.paymentId);
+          if (gateway.orderId === body.orderNumber && gateway.status === "SUCCESS") {
+            gatewayDecided = true;
+            const paid = Number(gateway.amountPaise) / 100;
+            utrNumber = (payment.status === "COMPLETED" && payment.utr) || null;
+            if (Math.abs(paid - authoritativeTotal) < 1) {
+              paymentStatus = "PAID";
+            } else {
+              addNote(`Payment amount mismatch: received ₹${paid}, order total ₹${authoritativeTotal}`);
+            }
+          }
+        } catch (err) {
+          console.warn("[Orders] YouPI payment check failed:", err);
+        }
+      }
+
+      if (!gatewayDecided && payment.status === "COMPLETED") {
+        utrNumber = payment.utr || null;
+        if (Math.abs((payment.amount ?? 0) - authoritativeTotal) < 1) {
+          paymentStatus = "PAID";
+        } else {
+          addNote(`Payment amount mismatch: received ₹${payment.amount}, order total ₹${authoritativeTotal}`);
+        }
+      } else if (!gatewayDecided) {
+        utrNumber = (payment.status === "PENDING" && payment.submittedUtr) || body.utrNumber || null;
+      }
+    }
+
     const saved = await saveOrder({
-      id: rawBody.id || body.orderNumber,
+      id: body.orderNumber,
       orderNumber: body.orderNumber,
       customerName: body.customerName,
       customerPhone: body.customerPhone,
@@ -146,10 +192,10 @@ export async function POST(req: NextRequest) {
       codFee: authoritativeCod,
       totalAmount: authoritativeTotal,
       paymentMethod: body.paymentMethod,
-      paymentStatus: body.paymentStatus,
-      orderStatus: body.orderStatus,
-      utrNumber: body.utrNumber || null,
-      notes: body.notes || null,
+      paymentStatus,
+      orderStatus: "PROCESSING",
+      utrNumber,
+      notes,
       items: validatedItems,
     });
 
@@ -166,8 +212,8 @@ export async function POST(req: NextRequest) {
       codFee: authoritativeCod,
       totalAmount: authoritativeTotal,
       paymentMethod: body.paymentMethod,
-      paymentStatus: body.paymentStatus,
-      utrNumber: body.utrNumber || null,
+      paymentStatus,
+      utrNumber,
       address: body.address,
       city: body.city,
       state: body.state,

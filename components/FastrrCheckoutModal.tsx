@@ -22,29 +22,33 @@ import {
 } from "lucide-react";
 import { useCart } from "./context/CartContext";
 import { cleanIndianPhone } from "@/lib/validations/checkout";
+import YouPiGatewayPanel, { cancelYouPiGatewaySession, GatewayHealthInfo } from "./YouPiGatewayPanel";
 
 interface FastrrCheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+// "gateway": YouPI-PG flow (WhatsApp OTP, auto-confirm). "manual": shop QR + typed UTR.
 interface YouPiSessionData {
+  mode: "gateway" | "manual";
   paymentId: string;
   orderId: string;
   amount: number;
   currency: string;
-  vpa: string;
-  merchantName: string;
-  upiUri: string;
-  qrCodeDataUrl: string;
-  deepLinks: {
+  vpa?: string;
+  merchantName?: string;
+  upiUri?: string;
+  qrCodeDataUrl?: string;
+  deepLinks?: {
     gpay: string;
     phonepe: string;
     paytm: string;
     cred: string;
     generic: string;
   };
-  expiresAt: string;
+  expiresAt?: string;
+  health?: GatewayHealthInfo | null;
   status: string;
 }
 
@@ -79,6 +83,10 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   const [confirmedUtr, setConfirmedUtr] = useState("");
   const [utrError, setUtrError] = useState("");
   const [isVerifyingUtr, setIsVerifyingUtr] = useState(false);
+  // paymentConfirmed: the gateway's signed webhook confirmed the money. utrSubmitted: customer typed a UTR (unverified).
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const [utrSubmitted, setUtrSubmitted] = useState(false);
+  const persistOrderRef = useRef<(utr: string | null) => Promise<void>>(async () => {});
   const [copiedVpa, setCopiedVpa] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState(600); // 10 minutes
 
@@ -196,23 +204,28 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   // Poll for YouPI payment confirmation from observer
   useEffect(() => {
     if (!isOpen || step !== 2 || paymentMethod !== "upi" || !orderId) return;
+    if (youPiSession?.mode === "gateway") return; // the gateway panel polls YouPI itself
 
+    let done = false;
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/payments/youpi/verify?orderId=${encodeURIComponent(orderId)}`);
         const data = await res.json();
-        if (data?.status === "COMPLETED") {
+        if (data?.status === "COMPLETED" && !done) {
+          done = true;
+          clearInterval(interval);
           if (data?.utr) setConfirmedUtr(data.utr);
+          setPaymentConfirmed(true);
+          await persistOrderRef.current(data?.utr || null);
           setIsProcessing(false);
           setStep(3);
           clearCart();
-          clearInterval(interval);
         }
       } catch {}
     }, 3500);
 
     return () => clearInterval(interval);
-  }, [isOpen, step, paymentMethod, orderId, clearCart]);
+  }, [isOpen, step, paymentMethod, orderId, clearCart, youPiSession?.mode]);
 
   // Countdown timer for YouPI dynamic QR
   useEffect(() => {
@@ -249,9 +262,8 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
       const data = await res.json();
       if (data?.success) {
         setConfirmedUtr(clean);
+        setUtrSubmitted(true);
         setIsVerifyingUtr(false);
-        setStep(3);
-        clearCart();
       } else {
         setUtrError(data?.error || "Verification failed. Please check the 12-digit UTR.");
         setIsVerifyingUtr(false);
@@ -271,6 +283,8 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
     setYouPiUtr("");
     setConfirmedUtr("");
     setUtrError("");
+    setPaymentConfirmed(false);
+    setUtrSubmitted(false);
     setIsProcessing(false);
     setPaymentMethod("upi");
   };
@@ -294,24 +308,9 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
     modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [step]);
 
-  const handlePlaceOrder = async () => {
-    setIsProcessing(true);
-    const assignedUtr =
-      confirmedUtr ||
-      youPiUtr.trim() ||
-      `4287${Math.floor(10000000 + Math.random() * 90000000)}`;
-    setConfirmedUtr(assignedUtr);
-
+  // Saves the order. The server decides the payment status; the browser only reports the UTR it knows.
+  const persistOrder = async (utr: string | null) => {
     try {
-      if (paymentMethod === "upi" && orderId) {
-        await fetch("/api/payments/youpi/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderId, utr: assignedUtr }),
-        });
-      }
-
-      // Persist order directly into PostgreSQL / Admin database
       await fetch("/api/admin/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -332,9 +331,8 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
           codFee,
           totalAmount: finalTotal,
           paymentMethod,
-          paymentStatus: paymentMethod === "upi" ? "PAID" : "PENDING",
-          orderStatus: "PROCESSING",
-          utrNumber: paymentMethod === "upi" ? assignedUtr : null,
+          utrNumber: paymentMethod === "upi" ? utr : null,
+          paymentId: paymentMethod === "upi" && youPiSession?.mode === "gateway" ? youPiSession.paymentId : null,
           items: cartItems.map((item) => ({
             productId: item.id,
             title: item.title,
@@ -348,6 +346,51 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
     } catch (e) {
       console.warn("Order persistence log:", e);
     }
+  };
+  useEffect(() => {
+    persistOrderRef.current = persistOrder;
+  });
+
+  // YouPI confirmed the money: save the order (the server re-checks with YouPI) and finish.
+  const handleGatewayPaid = async () => {
+    setPaymentConfirmed(true);
+    setIsProcessing(true);
+    await persistOrder(null);
+    setIsProcessing(false);
+    setStep(3);
+    clearCart();
+  };
+
+  // A gateway session belongs to one order number, so a retry starts under a new one.
+  const restartYouPiSession = () => {
+    const newOrderId = `TB-${Math.floor(100000 + Math.random() * 900000)}`;
+    setOrderId(newOrderId);
+    setYouPiSession(null);
+    initYouPiSession(newOrderId, finalTotal);
+  };
+
+  const handleSelectCod = () => {
+    if (youPiSession?.mode === "gateway" && !paymentConfirmed) {
+      cancelYouPiGatewaySession(youPiSession.paymentId);
+      setYouPiSession(null);
+      setOrderId(`TB-${Math.floor(100000 + Math.random() * 900000)}`);
+    }
+    setPaymentMethod("cod");
+  };
+
+  const handlePlaceOrder = async () => {
+    if (paymentMethod === "upi" && !paymentConfirmed && !utrSubmitted) {
+      const msg =
+        youPiSession?.mode === "gateway"
+          ? "Please complete the UPI payment above. Your order is placed automatically once it is received."
+          : "Please pay using the QR / UPI app, then enter your 12-digit UTR to place the order.";
+      setUtrError(msg);
+      alert(msg);
+      return;
+    }
+
+    setIsProcessing(true);
+    await persistOrder(confirmedUtr || null);
 
     setTimeout(() => {
       setIsProcessing(false);
@@ -373,14 +416,9 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
         {/* Header with Fastrr / Shiprocket Branding */}
         <div className="bg-[#1f3a2c] text-white px-5 sm:px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <Image
-              src="/assets/teabox-logo.svg"
-              alt="Teabox"
-              width={100}
-              height={26}
-              style={{ width: "auto" }}
-              className="h-6 w-auto brightness-0 invert"
-            />
+            <span className="font-stencil text-[20px] sm:text-[22px] font-bold tracking-wider text-white">
+              DEMOBOX
+            </span>
             <span className="text-[11px] bg-[#02cb5a] text-[#1f3a2c] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
               Fastrr Checkout
             </span>
@@ -724,7 +762,22 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                     </span>
                   </div>
 
-                  {paymentMethod === "upi" && (
+                  {paymentMethod === "upi" && youPiSession?.mode === "gateway" && (
+                    <div className="mt-4 pt-4 border-t border-[#e7e2d8]" onClick={(e) => e.stopPropagation()}>
+                      <YouPiGatewayPanel
+                        key={youPiSession.paymentId}
+                        paymentId={youPiSession.paymentId}
+                        phone={cleanIndianPhone(phone)}
+                        name={fullName}
+                        amount={finalTotal}
+                        initialHealth={youPiSession.health}
+                        onPaid={handleGatewayPaid}
+                        onRetry={restartYouPiSession}
+                      />
+                    </div>
+                  )}
+
+                  {paymentMethod === "upi" && youPiSession?.mode !== "gateway" && (
                     <div className="mt-4 pt-4 border-t border-[#e7e2d8] space-y-4" onClick={(e) => e.stopPropagation()}>
                       {/* UPI Info Sub-banner */}
                       <div className="bg-[#f0f8f4] border border-[#bfdcc9] rounded-lg p-3 text-[12.5px] text-[#1f3a2c] flex items-center justify-between">
@@ -820,12 +873,12 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                             <div className="min-w-0 pr-2">
                               <span className="text-[11px] text-[#747576] block">Merchant UPI ID (VPA)</span>
                               <span className="text-[13px] font-mono font-bold text-[#1f3a2c] truncate block">
-                                {youPiSession?.vpa || "8617513004@ptaxis"}
+                                {youPiSession?.vpa || ""}
                               </span>
                             </div>
                             <button
                               type="button"
-                              onClick={() => handleCopyVpa(youPiSession?.vpa || "8617513004@ptaxis")}
+                              onClick={() => handleCopyVpa(youPiSession?.vpa || "")}
                               className="px-2.5 py-1 text-[11px] font-bold bg-white border border-[#e7e2d8] hover:border-[#1f3a2c] rounded flex items-center gap-1 transition-colors cursor-pointer shrink-0 text-[#202020]"
                             >
                               {copiedVpa ? (
@@ -850,7 +903,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                           <label className="text-[12.5px] font-bold text-[#202020]">
                             Done Paying? Enter 12-Digit UPI Ref / UTR Number:
                           </label>
-                          <span className="text-[11px] text-[#747576]">Instant Auto-Confirm</span>
+                          <span className="text-[11px] text-[#747576]">Matched with our bank record</span>
                         </div>
                         <div className="flex gap-2">
                           <input
@@ -871,13 +924,18 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                             ) : (
                               <CheckCircle2 size={15} />
                             )}
-                            <span>Verify UTR</span>
+                            <span>Submit UTR</span>
                           </button>
                         </div>
                         {utrError && <p className="text-[12px] text-[#e53935]">{utrError}</p>}
+                        {utrSubmitted && (
+                          <p className="text-[12px] text-[#016c2f] font-semibold">
+                            UTR received. Tap &ldquo;Confirm &amp; Place Order&rdquo; below. We dispatch once your payment is matched with our bank record.
+                          </p>
+                        )}
                         <div className="flex items-center gap-1.5 text-[11px] text-[#747576]">
                           <span className="w-1.5 h-1.5 rounded-full bg-[#02cb5a] animate-pulse" />
-                          <span>Payments are verified automatically in real-time.</span>
+                          <span>Waiting for your payment. This screen updates when it is received.</span>
                         </div>
                       </form>
                     </div>
@@ -886,7 +944,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
 
                 {/* 2. Cash On Delivery */}
                 <div
-                  onClick={() => setPaymentMethod("cod")}
+                  onClick={handleSelectCod}
                   className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
                     paymentMethod === "cod"
                       ? "border-[#1f3a2c] bg-[#fafafa]"
@@ -982,22 +1040,26 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                 <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-2.5">
                   <span className="text-[#5c5a52]">Payment Status</span>
                   <span className="font-bold text-[#016c2f] uppercase">
-                    {paymentMethod === "cod" ? "COD (Pay on Delivery)" : "Paid Successfully"}
+                    {paymentMethod === "cod"
+                      ? "COD (Pay on Delivery)"
+                      : paymentConfirmed
+                        ? "Paid Successfully"
+                        : "Pending Bank Confirmation"}
                   </span>
                 </div>
-                {paymentMethod === "upi" && (
+                {paymentMethod === "upi" && confirmedUtr && (
                   <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-2.5">
                     <span className="text-[#5c5a52]">UPI Ref / UTR</span>
                     <span className="font-mono font-bold text-[#1f3a2c] flex items-center gap-1.5">
-                      {confirmedUtr || youPiUtr || `UTR-${Date.now().toString().slice(-8)}`}
+                      {confirmedUtr}
                       <span className="bg-[#02cb5a]/20 text-[#016c2f] text-[10px] font-sans font-bold px-1.5 py-0.5 rounded">
-                        Verified
+                        {paymentConfirmed ? "Verified" : "Awaiting check"}
                       </span>
                     </span>
                   </div>
                 )}
                 <div className="flex items-center justify-between pt-1">
-                  <span className="font-bold text-[#202020]">Amount Paid</span>
+                  <span className="font-bold text-[#202020]">{paymentConfirmed ? "Amount Paid" : "Order Total"}</span>
                   <span className="font-bold text-[16px] text-[#1f3a2c]">
                     ₹{finalTotal.toLocaleString("en-IN")}
                   </span>
@@ -1007,7 +1069,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                   <div className="bg-[#f0f8f4] border border-[#bfdcc9] rounded-lg p-2.5 text-[12px] text-[#1f3a2c] flex items-center justify-between mt-1">
                     <span className="flex items-center gap-1.5">
                       <ShieldCheck size={14} className="text-[#016c2f]" />
-                      <span>Payment verified &amp; securely processed via UPI.</span>
+                      <span>{paymentConfirmed ? "Payment verified & securely processed via UPI." : "We will confirm your UPI payment against our bank record, then dispatch your order."}</span>
                     </span>
                     <span className="font-bold text-[#016c2f] whitespace-nowrap">100% Secure</span>
                   </div>
