@@ -197,6 +197,11 @@ export default function CheckoutPage() {
   const codFee = paymentMethod === "cod" ? 40 : 0;
   const finalTotal = Math.max(0, subtotal - discountAmount + shippingFee + codFee);
 
+  // If previous order was completed (step === 3) but user now has items in their cart,
+  // ensure we display the active checkout flow (step 1) rather than the old confirmation.
+  const isConfirmation = step === 3 && cartItems.length === 0;
+  const effectiveStep = isConfirmation ? 3 : step === 3 ? 1 : step;
+
   const [confirmedTotal, setConfirmedTotal] = useState<number | null>(null);
   const latestTotalRef = useRef(finalTotal);
   useEffect(() => {
@@ -487,7 +492,7 @@ export default function CheckoutPage() {
     }, 800);
   };
 
-  const handleStartNewOrder = () => {
+  const resetOrderState = () => {
     setStep(1);
     setOrderId("");
     setUpiSession(null);
@@ -499,8 +504,29 @@ export default function CheckoutPage() {
     setIsProcessing(false);
     setPaymentMethod("upi");
     setConfirmedTotal(null);
+  };
+
+  const handleStartNewOrder = () => {
+    resetOrderState();
     router.push("/collections/all");
   };
+
+  // If previous order is completed (step === 3) but user now has items in cart,
+  // automatically reset back to step 1 for the new order.
+  useEffect(() => {
+    if (cartItems.length > 0 && step === 3) {
+      resetOrderState();
+    }
+  }, [cartItems.length, step]);
+
+  // Clean up completed order state when navigating away so returning starts clean
+  useEffect(() => {
+    return () => {
+      if (step === 3) {
+        resetOrderState();
+      }
+    };
+  }, [step]);
 
   return (
     <div className="min-h-screen bg-[#fcfbf9] text-[#202020] flex flex-col justify-between">
@@ -523,7 +549,13 @@ export default function CheckoutPage() {
       <header className="bg-[#1f3a2c] text-white py-4 px-4 sm:px-8 border-b border-[#2d4d3d] sticky top-0 z-30 shadow-sm">
         <div className="max-w-[1240px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/" className="hover:opacity-90 transition-opacity">
+            <Link
+              href="/"
+              onClick={() => {
+                if (step === 3) resetOrderState();
+              }}
+              className="hover:opacity-90 transition-opacity"
+            >
               <span className="font-stencil text-[22px] sm:text-[24px] font-bold tracking-wider text-white">
                 DEMOBOX
               </span>
@@ -540,6 +572,7 @@ export default function CheckoutPage() {
             <Link
               href="/collections/all"
               onClick={(e) => {
+                if (step === 3) resetOrderState();
                 if (paymentInProgress) {
                   e.preventDefault();
                   guardLeave(() => router.push("/collections/all"));
@@ -555,18 +588,18 @@ export default function CheckoutPage() {
       </header>
 
       {/* Checkout Progress Stepper (Only for Step 1 & 2) */}
-      {step !== 3 && (
+      {effectiveStep !== 3 && (
         <div className="bg-white border-b border-[#e7e2d8] py-3.5 px-4">
           <div className="max-w-[700px] mx-auto flex items-center justify-between text-[13px] font-semibold">
             <div
               className={`flex items-center gap-2 cursor-pointer ${
-                step === 1 ? "text-[#016c2f]" : "text-[#202020]"
+                effectiveStep === 1 ? "text-[#016c2f]" : "text-[#202020]"
               }`}
               onClick={() => guardLeave(() => setStep(1))}
             >
               <span
                 className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold ${
-                  step === 1 ? "bg-[#02cb5a] text-[#1f3a2c]" : "bg-[#e7e2d8] text-[#202020]"
+                  effectiveStep === 1 ? "bg-[#02cb5a] text-[#1f3a2c]" : "bg-[#e7e2d8] text-[#202020]"
                 }`}
               >
                 1
@@ -578,12 +611,12 @@ export default function CheckoutPage() {
 
             <div
               className={`flex items-center gap-2 ${
-                step === 2 ? "text-[#016c2f]" : "text-[#747576]"
+                effectiveStep === 2 ? "text-[#016c2f]" : "text-[#747576]"
               }`}
             >
               <span
                 className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold ${
-                  step === 2 ? "bg-[#02cb5a] text-[#1f3a2c]" : "bg-[#e7e2d8] text-[#747576]"
+                  effectiveStep === 2 ? "bg-[#02cb5a] text-[#1f3a2c]" : "bg-[#e7e2d8] text-[#747576]"
                 }`}
               >
                 2
@@ -606,12 +639,12 @@ export default function CheckoutPage() {
       {/* Main Body */}
       <main className="max-w-[1240px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-10 flex-1">
         {/* While hydration is loading */}
-        {!hasHydrated && step !== 3 ? (
+        {!hasHydrated && !isConfirmation ? (
           <div className="bg-white border border-[#e7e2d8] rounded-2xl p-12 text-center max-w-[540px] mx-auto space-y-4 shadow-sm">
             <div className="w-10 h-10 border-3 border-[#02cb5a] border-t-transparent rounded-full animate-spin mx-auto" />
             <p className="text-[14px] text-[#747576]">Restoring your checkout session...</p>
           </div>
-        ) : cartItems.length === 0 && step !== 3 ? (
+        ) : cartItems.length === 0 && !isConfirmation ? (
           <div className="bg-white border border-[#e7e2d8] rounded-2xl p-8 sm:p-12 text-center max-w-[540px] mx-auto space-y-4 shadow-sm">
             <div className="w-16 h-16 rounded-full bg-[#fafafa] border border-[#e7e2d8] flex items-center justify-center mx-auto text-[#747576]">
               <ShoppingBag size={28} />
@@ -632,7 +665,7 @@ export default function CheckoutPage() {
               </Link>
             </div>
           </div>
-        ) : step === 3 ? (
+        ) : isConfirmation ? (
           /* ================= STEP 3: ORDER CONFIRMATION ================= */
           <motion.div
             initial={{ opacity: 0, scale: 0.96 }}
@@ -717,6 +750,7 @@ export default function CheckoutPage() {
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3.5">
               <Link
                 href={`/order/${orderId}`}
+                onClick={() => resetOrderState()}
                 className="w-full sm:w-auto bg-[#1f3a2c] hover:bg-[#14281e] text-white font-bold text-[14px] px-6 py-3.5 rounded-xl transition-colors text-center flex items-center justify-center gap-1.5"
               >
                 <span>Track Live Order &amp; Invoice</span>
@@ -738,7 +772,7 @@ export default function CheckoutPage() {
             <div className="lg:col-span-7 bg-white border border-[#e7e2d8] rounded-2xl p-5 sm:p-7 shadow-sm">
               <AnimatePresence mode="wait">
                 {/* ================= STEP 1: ADDRESS ================= */}
-                {step === 1 && (
+                {effectiveStep === 1 && (
                   <motion.form
                     key="step-1"
                     initial={{ opacity: 0, x: -15 }}
@@ -935,7 +969,7 @@ export default function CheckoutPage() {
                 )}
 
                 {/* ================= STEP 2: PAYMENT ================= */}
-                {step === 2 && (
+                {effectiveStep === 2 && (
                   <motion.div
                     key="step-2"
                     initial={{ opacity: 0, x: 15 }}

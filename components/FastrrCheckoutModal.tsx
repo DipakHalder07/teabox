@@ -147,6 +147,11 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   const codFee = paymentMethod === "cod" ? 40 : 0;
   const finalTotal = Math.max(0, subtotal - discountAmount + shippingFee + codFee);
 
+  // If previous order was completed (step === 3) but user now has items in their cart,
+  // ensure we display the active checkout flow (step 1) rather than the old confirmation.
+  const isConfirmation = step === 3 && cartItems.length === 0;
+  const effectiveStep = isConfirmation ? 3 : step === 3 ? 1 : step;
+
   const [confirmedTotal, setConfirmedTotal] = useState<number | null>(null);
   const latestTotalRef = useRef(finalTotal);
   useEffect(() => {
@@ -336,6 +341,13 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
     }
   }, [isOpen]);
 
+  // Reset state whenever new items are added to cart after a completed order
+  useEffect(() => {
+    if (cartItems.length > 0 && step === 3) {
+      resetCheckout();
+    }
+  }, [cartItems.length, step]);
+
   const closeNow = () => {
     if (step === 3) {
       resetCheckout();
@@ -513,22 +525,22 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
         </div>
 
         {/* Stepper Progress Bar */}
-        {step !== 3 && (
+        {effectiveStep !== 3 && (
           <div className="bg-[#fafafa] border-b border-[#e7e2d8] px-5 sm:px-6 py-3 flex items-center justify-between text-[13px] font-semibold">
-            <div className={`flex items-center gap-2 ${step === 1 ? "text-[#016c2f]" : "text-[#202020]"}`}>
+            <div className={`flex items-center gap-2 ${effectiveStep === 1 ? "text-[#016c2f]" : "text-[#202020]"}`}>
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold ${
-                step === 1 ? "bg-[#02cb5a] text-[#1f3a2c]" : "bg-[#1f3a2c] text-white"
+                effectiveStep === 1 ? "bg-[#02cb5a] text-[#1f3a2c]" : "bg-[#1f3a2c] text-white"
               }`}>
-                {step > 1 ? "✓" : "1"}
+                {effectiveStep > 1 ? "✓" : "1"}
               </span>
               <span>1. Delivery Address</span>
             </div>
 
             <ChevronRight size={16} className="text-[#8e8d8a]" />
 
-            <div className={`flex items-center gap-2 ${step === 2 ? "text-[#016c2f]" : "text-[#747576]"}`}>
+            <div className={`flex items-center gap-2 ${effectiveStep === 2 ? "text-[#016c2f]" : "text-[#747576]"}`}>
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold ${
-                step === 2 ? "bg-[#02cb5a] text-[#1f3a2c]" : "bg-[#e7e2d8] text-[#747576]"
+                effectiveStep === 2 ? "bg-[#02cb5a] text-[#1f3a2c]" : "bg-[#e7e2d8] text-[#747576]"
               }`}>
                 2
               </span>
@@ -540,7 +552,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
         {/* Body Content */}
         <div ref={modalBodyRef} className="flex-1 overflow-y-auto p-5 sm:p-7">
           {/* ================= STEP 1: ADDRESS & CONTACT ================= */}
-          {step === 1 && (
+          {effectiveStep === 1 && (
             <form onSubmit={handleProceedToPayment} className="space-y-6">
               {/* Cart Items Mini Preview */}
               {cartItems.length > 0 && (
@@ -774,7 +786,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
           )}
 
           {/* ================= STEP 2: PAYMENT METHODS ================= */}
-          {step === 2 && (
+          {effectiveStep === 2 && (
             <div className="space-y-6">
               {/* Delivery Address Summary Bar */}
               <div className="bg-[#fafafa] border border-[#e7e2d8] rounded-xl p-3.5 flex items-center justify-between text-[13px]">
@@ -1070,7 +1082,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
           )}
 
           {/* ================= STEP 3: ORDER SUCCESS ================= */}
-          {step === 3 && (
+          {effectiveStep === 3 && (
             <div className="text-center py-6 sm:py-8 space-y-5">
               <div className="w-16 h-16 rounded-full bg-[#02cb5a]/20 border-2 border-[#02cb5a] flex items-center justify-center mx-auto text-[#016c2f]">
                 <Check size={36} className="stroke-[3]" />
@@ -1149,7 +1161,10 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
               <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-3">
                 <Link
                   href={`/order/${orderId}`}
-                  onClick={() => onClose()}
+                  onClick={() => {
+                    resetCheckout();
+                    onClose();
+                  }}
                   className="w-full sm:w-auto bg-[#1f3a2c] hover:bg-[#14281e] text-white font-bold text-[14px] px-6 py-3 rounded-lg transition-colors flex items-center justify-center gap-1.5"
                 >
                   <span>Track Live Order &amp; Invoice</span>
