@@ -124,7 +124,7 @@ export default function TrialPacks() {
             return (
               <div
                 key={pack.id}
-                className="group relative bg-white border-2 border-[#e7e2d8] hover:border-[#02cb5a] rounded-[10px] overflow-hidden flex flex-col justify-between shadow-sm transition-all duration-200"
+                className="group relative bg-white border border-[#e7e2d8] rounded-[10px] overflow-hidden flex flex-col justify-between"
               >
                 {/* Media Image with Link */}
                 <Link
@@ -136,7 +136,7 @@ export default function TrialPacks() {
                     alt={pack.title}
                     fill
                     unoptimized
-                    className="object-cover group-hover:scale-105 transition-transform duration-300"
+                    className="object-cover"
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                   />
                 </Link>

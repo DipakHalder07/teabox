@@ -16,6 +16,15 @@ export const customerRegisterSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
+export const emailOtpSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+});
+
+export const emailOtpVerifySchema = z.object({
+  email: z.string().email(),
+  code: z.string().regex(/^\d{4}$/, "Verification code must be 4 digits"),
+});
+
 export const fastrrOtpSchema = z.object({
   phone: z
     .string()

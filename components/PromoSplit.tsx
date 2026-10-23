@@ -9,7 +9,7 @@ export default function PromoSplit({ onOpenTeaFinder }: { onOpenTeaFinder?: () =
     <section id="promo-split" className="w-full bg-[#fafafa] px-4 pt-4 pb-0 lg:px-16 lg:pt-0 lg:pb-12">
       <div className="max-w-[1440px] mx-auto flex flex-col gap-4 lg:grid lg:grid-cols-[1.4fr_1fr] lg:gap-6 items-stretch">
         {/* Card 1: Prebiotic Instant Tea Promo */}
-        <div className="group relative bg-white border border-[#e7e2d8] hover:border-[#02cb5a] rounded-[10px] overflow-hidden flex flex-col lg:grid lg:grid-cols-2 transition-colors duration-150">
+        <div className="group relative bg-white border border-[#e7e2d8] rounded-[10px] overflow-hidden flex flex-col lg:grid lg:grid-cols-2">
           {/* Media with Link */}
           <Link
             href="/collections/premix"
@@ -22,7 +22,7 @@ export default function PromoSplit({ onOpenTeaFinder }: { onOpenTeaFinder?: () =
               src="/assets/promo-prebiotic.webp"
               alt="Assorted Chai Premix"
               fill
-              className="object-cover group-hover:scale-105 transition-transform duration-300"
+              className="object-cover"
               sizes="(max-width: 999px) 100vw, 40vw"
             />
           </Link>

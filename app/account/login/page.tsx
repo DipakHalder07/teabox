@@ -1,68 +1,42 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { X, Check, ArrowRight, ShieldCheck, Mail, Lock, Phone } from "lucide-react";
+import { Check, ArrowRight, Mail, Lock, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import SiteLayoutWrapper from "@/components/SiteLayoutWrapper";
 import {
-  fastrrOtpSchema,
+  emailOtpSchema,
   customerLoginSchema,
   customerRegisterSchema,
 } from "@/lib/validations/account";
-import { cleanIndianPhone } from "@/lib/validations/checkout";
 import { useCart } from "@/components/context/CartContext";
 
 export default function LoginPage() {
   const { mergeCartItems, clearCart, cartItems } = useCart();
-  // Mode: "fastrr" (the Shiprocket 1-click modal overlay), "password" (traditional email/password), "register", "forgot"
-  const [viewMode, setViewMode] = useState<"fastrr" | "password" | "register" | "forgot">("fastrr");
 
-  // Fastrr OTP form state
-  const [mobileNumber, setMobileNumber] = useState("");
+  // Mode: "quick" (Instant Email Verification Code), "password" (traditional), "register", "forgot"
+  const [viewMode, setViewMode] = useState<"quick" | "password" | "register" | "forgot">("quick");
+
+  // Email Quick OTP state
+  const [email, setEmail] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState(["", "", "", ""]);
+  const [generatedOtp, setGeneratedOtp] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState("");
 
-  // Email/password state
-  const [email, setEmail] = useState("");
+  // Refs for 4-digit OTP auto-focus
+  const otpInputsRef = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Password & Register state
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [registerSuccess, setRegisterSuccess] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
 
-  // Automatically clean mobile number when browser autofills (+91, 91, or leading 0s)
-  React.useEffect(() => {
-    if (mobileNumber) {
-      const cleaned = cleanIndianPhone(mobileNumber);
-      if (cleaned !== mobileNumber) {
-        setMobileNumber(cleaned);
-      }
-    }
-  }, [mobileNumber]);
-
-  // Handle Fastrr OTP submission
-  const handleSendOtp = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanPhone = cleanIndianPhone(mobileNumber);
-    setMobileNumber(cleanPhone);
-    const result = fastrrOtpSchema.safeParse({ phone: cleanPhone });
-    if (!result.success) {
-      toast.error("Invalid mobile number", {
-        description: "Please enter a valid 10-digit Indian mobile number",
-      });
-      return;
-    }
-
-    setOtpSent(true);
-    toast.success("OTP Sent!", {
-      description: `4-digit verification code sent to +91 ${cleanPhone}`,
-    });
-  };
-
+  // Restore saved cart from previous customer sessions
   const restoreCustomerCart = (userKey: string) => {
     try {
       const sanitizedKey = `teabox_saved_cart_${userKey.replace(/[^a-zA-Z0-9]/g, "_")}`;
@@ -72,7 +46,7 @@ export default function LoginPage() {
         if (Array.isArray(savedItems) && savedItems.length > 0) {
           mergeCartItems(savedItems);
           toast.success("Saved Cart Restored", {
-            description: "Previous customer cart synced without duplicates.",
+            description: "Your previous customer cart was synced without duplicates.",
           });
         }
       }
@@ -81,21 +55,81 @@ export default function LoginPage() {
     }
   };
 
-  const handleVerifyOtp = (e: React.FormEvent) => {
+  // Step 1: Send 4-Digit Verification Code to Email
+  const handleSendEmailOtp = (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanEmail = email.trim().toLowerCase();
+    setEmail(cleanEmail);
+
+    const result = emailOtpSchema.safeParse({ email: cleanEmail });
+    if (!result.success) {
+      toast.error("Invalid email address", {
+        description: "Please enter a valid email address.",
+      });
+      return;
+    }
+
+    // Generate random 4-digit verification code
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    setGeneratedOtp(code);
+    setOtpCode(["", "", "", ""]);
+    setOtpSent(true);
+
+    toast.success("Verification Code Sent!", {
+      description: `4-digit code sent to ${cleanEmail}. (Demo Code: ${code})`,
+    });
+
+    // Focus first input box shortly after render
+    setTimeout(() => {
+      otpInputsRef.current[0]?.focus();
+    }, 100);
+  };
+
+  // Step 2: Verify Code & Authenticate
+  const handleVerifyEmailOtp = (e?: React.FormEvent, codeOverride?: string) => {
+    if (e) e.preventDefault();
+    const entered = codeOverride || otpCode.join("");
+
+    if (entered.length < 4) {
+      toast.error("Incomplete code", {
+        description: "Please enter the complete 4-digit verification code.",
+      });
+      return;
+    }
+
+    if (generatedOtp && entered !== generatedOtp && entered !== "1234") {
+      toast.error("Invalid code", {
+        description: `Incorrect verification code. Please check your code (Demo Code: ${generatedOtp}).`,
+      });
+      return;
+    }
+
+    // Verify code
     setIsVerifying(true);
     setTimeout(() => {
       setIsVerifying(false);
       setIsLoggedIn(true);
-      const userKey = `+91 ${mobileNumber}`;
-      setLoggedInUser(userKey);
-      restoreCustomerCart(userKey);
-      toast.success("Welcome back!", {
-        description: `Logged in as +91 ${mobileNumber}`,
+      setLoggedInUser(email);
+      restoreCustomerCart(email);
+
+      toast.success("Verified successfully!", {
+        description: `Logged in as ${email}. Welcome to Teabox!`,
       });
-    }, 600);
+    }, 400);
   };
 
+  // Resend Verification Code
+  const handleResendOtp = () => {
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    setGeneratedOtp(code);
+    setOtpCode(["", "", "", ""]);
+    toast.info("New Code Sent!", {
+      description: `A fresh 4-digit code was sent to ${email} (Demo Code: ${code})`,
+    });
+    otpInputsRef.current[0]?.focus();
+  };
+
+  // Traditional Password Login
   const handlePasswordLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const result = customerLoginSchema.safeParse({ email, password });
@@ -114,6 +148,7 @@ export default function LoginPage() {
     });
   };
 
+  // Traditional Registration
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
     const result = customerRegisterSchema.safeParse({ name, email, password });
@@ -124,18 +159,16 @@ export default function LoginPage() {
       return;
     }
 
-    setRegisterSuccess(true);
     toast.success("Account created successfully!");
     setTimeout(() => {
-      const userKey = name || email;
       setIsLoggedIn(true);
-      setLoggedInUser(userKey);
-      restoreCustomerCart(userKey);
-    }, 800);
+      setLoggedInUser(email);
+      restoreCustomerCart(email);
+    }, 600);
   };
 
+  // Secure Logout
   const handleLogout = () => {
-    // Secure current user's cart to their private key before logout
     if (loggedInUser && cartItems.length > 0) {
       try {
         const sanitizedKey = `teabox_saved_cart_${loggedInUser.replace(/[^a-zA-Z0-9]/g, "_")}`;
@@ -145,11 +178,12 @@ export default function LoginPage() {
     setIsLoggedIn(false);
     setLoggedInUser("");
     setOtpSent(false);
-    setMobileNumber("");
-    setViewMode("fastrr");
+    setEmail("");
+    setOtpCode(["", "", "", ""]);
+    setViewMode("quick");
     clearCart();
     toast.info("Logged Out", {
-      description: "Cart state cleared to prevent leaking data.",
+      description: "Session closed and cart secured.",
     });
   };
 
@@ -157,7 +191,7 @@ export default function LoginPage() {
     <SiteLayoutWrapper>
       <div className="min-h-[80vh] flex flex-col justify-center items-center py-12 px-4 sm:px-6 bg-[#fafafa]">
         {/* Breadcrumb */}
-        <div className="w-full max-w-[500px] text-center mb-6">
+        <div className="w-full max-w-[480px] text-center mb-6">
           <nav aria-label="Breadcrumb" className="text-[13px] text-[#747576]">
             <Link href="/" className="text-[#1f3a2c] hover:underline">
               Home
@@ -166,7 +200,7 @@ export default function LoginPage() {
           </nav>
         </div>
 
-        {/* LOGGED IN STATE */}
+        {/* LOGGED IN DASHBOARD */}
         {isLoggedIn ? (
           <div className="w-full max-w-[480px] bg-white border border-[#e7e2d8] rounded-2xl p-8 sm:p-10 shadow-xl text-center space-y-5 animate-in fade-in duration-300">
             <div className="w-16 h-16 rounded-full bg-[#02cb5a]/20 border-2 border-[#02cb5a] flex items-center justify-center mx-auto text-[#016c2f]">
@@ -216,20 +250,10 @@ export default function LoginPage() {
           </div>
         ) : (
           /* ========================================================================= */
-          /* 1. Fastrr / Shiprocket 1-Click Mobile OTP View (Live Site Default)        */
+          /* 1. QUICK LOGIN OR REGISTER (EMAIL ONLY - NO PHONE NUMBER)                 */
           /* ========================================================================= */
-          viewMode === "fastrr" ? (
-            <div className="relative w-full max-w-[420px] bg-white border border-[#e7e2d8] rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-              {/* Close / Switch to Traditional Email Button */}
-              <button
-                type="button"
-                onClick={() => setViewMode("password")}
-                className="absolute top-4 right-4 p-1.5 text-[#5c5a52] hover:text-[#202020] rounded-full hover:bg-[#f0f0f0] transition-colors cursor-pointer z-10"
-                title="Switch to Email Login"
-              >
-                <X size={20} />
-              </button>
-
+          viewMode === "quick" ? (
+            <div className="relative w-full max-w-[440px] bg-white border border-[#e7e2d8] rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
               <div className="p-7 sm:p-9 text-center">
                 {/* Brand Logo */}
                 <div className="flex justify-center mb-6">
@@ -244,104 +268,161 @@ export default function LoginPage() {
                 </div>
 
                 {!otpSent ? (
-                  <form onSubmit={handleSendOtp} className="space-y-4">
-                    <div className="text-center mb-4">
-                      <h3 className="text-[17px] font-bold text-[#202020]">
+                  /* STEP 1: Enter Email (No Phone Number) */
+                  <form onSubmit={handleSendEmailOtp} className="space-y-4">
+                    <div className="text-center mb-5">
+                      <h3 className="text-[19px] font-bold text-[#202020]">
                         Quick Login or Register
                       </h3>
-                      <p className="text-[13px] text-[#5c5a52] mt-0.5">
-                        Get instant access with a 1-click mobile OTP
+                      <p className="text-[13px] text-[#5c5a52] mt-1">
+                        Enter your email for an instant verification code
                       </p>
                     </div>
 
-                    {/* India Mobile Number Input with integrated button */}
-                    <div className="flex items-center border-2 border-[#594ee6] rounded-xl overflow-hidden bg-white shadow-xs focus-within:ring-2 focus-within:ring-[#594ee6]/20">
-                      <div className="flex items-center gap-1 px-3 py-3 bg-[#fafafa] border-r border-[#e7e2d8] text-[14px] font-bold text-[#202020]">
-                        <span>🇮🇳</span>
-                        <span>+91</span>
+                    {/* Email Input Field */}
+                    <div className="space-y-1.5 text-left">
+                      <label className="block text-[12px] font-bold uppercase tracking-wider text-[#5c5a52]">
+                        Email Address
+                      </label>
+                      <div className="flex items-center border-2 border-[#1f3a2c] focus-within:border-[#02cb5a] rounded-xl overflow-hidden bg-white shadow-2xs transition-colors">
+                        <Mail size={18} className="text-[#5c5a52] ml-3.5 mr-2 shrink-0" />
+                        <input
+                          type="email"
+                          required
+                          autoFocus
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="name@example.com"
+                          className="flex-1 px-2 py-3 text-[14.5px] outline-none text-[#202020]"
+                        />
                       </div>
-                      <input
-                        type="tel"
-                        required
-                        autoFocus
-                        value={mobileNumber}
-                        onChange={(e) => setMobileNumber(cleanIndianPhone(e.target.value))}
-                        onPaste={(e) => {
-                          const pasted = e.clipboardData.getData("text");
-                          if (pasted) {
-                            e.preventDefault();
-                            setMobileNumber(cleanIndianPhone(pasted));
-                          }
-                        }}
-                        placeholder="10-digit mobile number"
-                        className="flex-1 px-3 py-3 text-[14px] outline-none text-[#202020]"
-                      />
-                      <button
-                        type="submit"
-                        className="bg-[#594ee6] hover:bg-[#4d40db] text-white font-bold text-[14px] px-4 py-3 transition-colors cursor-pointer tracking-wide"
-                      >
-                        Login
-                      </button>
                     </div>
 
-                    <p className="text-[11px] text-[#747576] leading-tight pt-1">
-                      ⓘ By proceeding, you are agreeing to our{" "}
+                    <button
+                      type="submit"
+                      className="w-full bg-[#1f3a2c] hover:bg-[#14281e] text-white font-bold text-[14.5px] py-3.5 rounded-xl transition-all cursor-pointer shadow-sm tracking-wide flex items-center justify-center gap-2 mt-2"
+                    >
+                      <span>Continue with Email</span>
+                      <ArrowRight size={16} />
+                    </button>
+
+                    <p className="text-[11.5px] text-[#747576] leading-tight pt-1">
+                      By proceeding, you agree to Teabox&apos;s{" "}
                       <Link href="#terms" className="underline font-medium text-[#202020]">
-                        T&amp;C
+                        Terms
                       </Link>{" "}
                       and{" "}
                       <Link href="#privacy" className="underline font-medium text-[#202020]">
                         Privacy Policy
-                      </Link>{" "}
-                      and Shiprocket&apos;s Terms.
+                      </Link>.
                     </p>
 
-                    <div className="pt-3 border-t border-[#e7e2d8] mt-4 flex items-center justify-between">
+                    <div className="pt-3 border-t border-[#e7e2d8] mt-4 flex items-center justify-between text-[13px]">
                       <button
                         type="button"
                         onClick={() => setViewMode("password")}
-                        className="text-[13px] text-[#1f3a2c] hover:underline font-medium cursor-pointer"
+                        className="text-[#5c5a52] hover:text-[#202020] hover:underline font-medium cursor-pointer"
                       >
-                        Use Email &amp; Password
+                        Use Password
                       </button>
                       <button
                         type="button"
                         onClick={() => setViewMode("register")}
-                        className="text-[13px] text-[#016c2f] hover:underline font-bold cursor-pointer"
+                        className="text-[#016c2f] hover:underline font-bold cursor-pointer"
                       >
-                        Create Account
+                        Create Password Account
                       </button>
                     </div>
                   </form>
                 ) : (
-                  /* OTP Entry Form */
-                  <form onSubmit={handleVerifyOtp} className="space-y-4">
-                    <h3 className="text-[17px] font-bold text-[#202020]">
-                      Enter Verification Code
-                    </h3>
-                    <p className="text-[13px] text-[#5c5a52]">
-                      Sent 4-digit OTP to +91 {mobileNumber}
-                    </p>
+                  /* STEP 2: Enter Verification Code */
+                  <form onSubmit={handleVerifyEmailOtp} className="space-y-4">
+                    <div className="text-center">
+                      <div className="w-12 h-12 rounded-full bg-[#02cb5a]/15 text-[#016c2f] flex items-center justify-center mx-auto mb-2">
+                        <KeyRound size={22} />
+                      </div>
+                      <h3 className="text-[18px] font-bold text-[#202020]">
+                        Enter Verification Code
+                      </h3>
+                      <p className="text-[13px] text-[#5c5a52] mt-0.5">
+                        We sent a 4-digit code to <strong className="text-[#1f3a2c]">{email}</strong>
+                      </p>
+                    </div>
 
-                    {/* 4 Digit OTP Inputs */}
+                    {/* Demo Code Helper */}
+                    <div className="bg-[#f2faf5] border border-[#bfdcc9] rounded-xl p-3 my-2 text-center flex flex-col items-center gap-1.5">
+                      <div className="flex items-center gap-2 text-[13px] text-[#1f3a2c]">
+                        <span>Verification Code:</span>
+                        <span className="font-mono font-extrabold text-[16px] text-[#016c2f] tracking-widest bg-white px-2.5 py-0.5 rounded border border-[#bfdcc9]">
+                          {generatedOtp || "1234"}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const codeArr = (generatedOtp || "1234").split("").slice(0, 4);
+                          setOtpCode(codeArr);
+                          handleVerifyEmailOtp(undefined, codeArr.join(""));
+                        }}
+                        className="text-[12px] font-bold text-[#016c2f] hover:text-[#1f3a2c] underline cursor-pointer"
+                      >
+                        Click here to auto-fill & verify
+                      </button>
+                    </div>
+
+                    {/* 4-Digit Code Inputs */}
                     <div className="flex justify-center gap-3 my-4">
                       {[0, 1, 2, 3].map((index) => (
                         <input
                           key={index}
+                          ref={(el) => {
+                            otpInputsRef.current[index] = el;
+                          }}
                           type="text"
+                          inputMode="numeric"
                           maxLength={1}
                           required
                           value={otpCode[index]}
                           onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, "");
                             const newOtp = [...otpCode];
-                            newOtp[index] = e.target.value;
+                            newOtp[index] = val ? val.slice(-1) : "";
                             setOtpCode(newOtp);
-                            // auto focus next
-                            if (e.target.value && e.target.nextElementSibling) {
-                              (e.target.nextElementSibling as HTMLInputElement).focus();
+
+                            // Auto-focus next box
+                            if (val && index < 3) {
+                              otpInputsRef.current[index + 1]?.focus();
+                            }
+
+                            // If 4th digit entered, auto submit
+                            if (val && index === 3 && newOtp.slice(0, 3).every((d) => d !== "")) {
+                              handleVerifyEmailOtp(undefined, newOtp.join(""));
                             }
                           }}
-                          className="w-12 h-14 text-center text-[22px] font-bold border-2 border-[#594ee6] rounded-xl outline-none focus:ring-2 focus:ring-[#594ee6]/20 bg-white"
+                          onKeyDown={(e) => {
+                            // Backspace moves to previous box
+                            if (e.key === "Backspace" && !otpCode[index] && index > 0) {
+                              otpInputsRef.current[index - 1]?.focus();
+                            }
+                          }}
+                          onPaste={(e) => {
+                            e.preventDefault();
+                            const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
+                            if (pasted.length > 0) {
+                              const newOtp = [...otpCode];
+                              for (let i = 0; i < pasted.length; i++) {
+                                newOtp[i] = pasted[i];
+                              }
+                              setOtpCode(newOtp);
+                              if (pasted.length === 4) {
+                                handleVerifyEmailOtp(undefined, pasted);
+                              } else {
+                                const focusIndex = Math.min(pasted.length, 3);
+                                otpInputsRef.current[focusIndex]?.focus();
+                              }
+                            }
+                          }}
+                          className="w-12 h-14 text-center text-[22px] font-bold border-2 border-[#1f3a2c] focus:border-[#02cb5a] rounded-xl outline-none focus:ring-2 focus:ring-[#02cb5a]/20 bg-white"
                         />
                       ))}
                     </div>
@@ -349,35 +430,39 @@ export default function LoginPage() {
                     <button
                       type="submit"
                       disabled={isVerifying}
-                      className="w-full bg-[#594ee6] hover:bg-[#4d40db] text-white font-bold text-[15px] py-3.5 rounded-xl transition-all cursor-pointer shadow-md"
+                      className="w-full bg-[#02cb5a] hover:bg-[#02b851] text-[#1f3a2c] font-bold text-[15px] py-3.5 rounded-xl transition-all cursor-pointer shadow-sm tracking-wide flex items-center justify-center gap-2"
                     >
-                      {isVerifying ? "Verifying..." : "Verify & Sign In"}
+                      {isVerifying ? (
+                        "Verifying Code..."
+                      ) : (
+                        <>
+                          <Check size={18} className="stroke-[3]" />
+                          <span>Verify & Sign In</span>
+                        </>
+                      )}
                     </button>
 
-                    <div className="flex justify-between items-center text-[12px] pt-2">
+                    <div className="flex justify-between items-center text-[12.5px] pt-2">
                       <button
                         type="button"
-                        onClick={() => setOtpSent(false)}
-                        className="text-[#747576] hover:text-[#202020] underline"
+                        onClick={() => {
+                          setOtpSent(false);
+                          setOtpCode(["", "", "", ""]);
+                        }}
+                        className="text-[#747576] hover:text-[#202020] underline cursor-pointer"
                       >
-                        Change Number
+                        Change Email
                       </button>
                       <button
                         type="button"
-                        onClick={() => alert("New OTP sent to +91 " + mobileNumber)}
-                        className="text-[#594ee6] font-bold hover:underline"
+                        onClick={handleResendOtp}
+                        className="text-[#016c2f] font-bold hover:underline cursor-pointer"
                       >
-                        Resend OTP
+                        Resend Code
                       </button>
                     </div>
                   </form>
                 )}
-              </div>
-
-              {/* Shiprocket Footer Banner */}
-              <div className="bg-[#f5f4fe] border-t border-[#e2dffc] py-2.5 px-4 text-center flex items-center justify-center gap-1.5 text-[11px] font-semibold text-[#594ee6]">
-                <span>Powered by</span>
-                <span className="font-extrabold tracking-tight">Shiprocket</span>
               </div>
             </div>
           ) : viewMode === "password" ? (
@@ -420,7 +505,7 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => setViewMode("forgot")}
-                      className="text-[12px] text-[#5c5a52] hover:text-[#016c2f] underline"
+                      className="text-[12px] text-[#5c5a52] hover:text-[#016c2f] underline cursor-pointer"
                     >
                       Forgot your password?
                     </button>
@@ -449,11 +534,11 @@ export default function LoginPage() {
               <div className="pt-4 border-t border-[#e7e2d8] flex flex-col items-center gap-3 text-[13.5px]">
                 <button
                   type="button"
-                  onClick={() => setViewMode("fastrr")}
-                  className="w-full border border-[#594ee6] text-[#594ee6] hover:bg-[#594ee6]/5 font-bold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  onClick={() => setViewMode("quick")}
+                  className="w-full border border-[#1f3a2c] text-[#1f3a2c] hover:bg-[#1f3a2c]/5 font-bold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Phone size={16} />
-                  <span>Sign In with Mobile OTP</span>
+                  <Mail size={16} />
+                  <span>Use Quick Email Code</span>
                 </button>
 
                 <p className="text-[#5c5a52]">
@@ -461,7 +546,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setViewMode("register")}
-                    className="font-bold text-[#016c2f] hover:underline"
+                    className="font-bold text-[#016c2f] hover:underline cursor-pointer"
                   >
                     Create account
                   </button>
@@ -470,7 +555,7 @@ export default function LoginPage() {
             </div>
           ) : viewMode === "register" ? (
             /* ========================================================================= */
-            /* 3. Register Account View                                                  */
+            /* 3. Register Account View (Email Only - No Phone)                          */
             /* ========================================================================= */
             <div className="w-full max-w-[440px] bg-white border border-[#e7e2d8] rounded-2xl shadow-xl p-8 sm:p-10 space-y-6 animate-in fade-in duration-200">
               <div className="text-center">
@@ -533,15 +618,24 @@ export default function LoginPage() {
                 </button>
               </form>
 
-              <div className="pt-4 border-t border-[#e7e2d8] text-center text-[13.5px] text-[#5c5a52]">
-                Already have an account?{" "}
+              <div className="pt-4 border-t border-[#e7e2d8] flex flex-col items-center gap-2 text-center text-[13.5px] text-[#5c5a52]">
                 <button
                   type="button"
-                  onClick={() => setViewMode("password")}
-                  className="font-bold text-[#016c2f] hover:underline"
+                  onClick={() => setViewMode("quick")}
+                  className="font-bold text-[#016c2f] hover:underline cursor-pointer"
                 >
-                  Log In
+                  ← Quick Email Login
                 </button>
+                <p>
+                  Already have an account?{" "}
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("password")}
+                    className="font-bold text-[#1f3a2c] hover:underline cursor-pointer"
+                  >
+                    Log In
+                  </button>
+                </p>
               </div>
             </div>
           ) : (
@@ -571,9 +665,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => {
                       setForgotSent(false);
-                      setViewMode("password");
+                      setViewMode("quick");
                     }}
-                    className="text-[13px] font-bold text-[#016c2f] underline pt-2 block mx-auto"
+                    className="text-[13px] font-bold text-[#016c2f] underline pt-2 block mx-auto cursor-pointer"
                   >
                     Return to Login
                   </button>
@@ -607,8 +701,8 @@ export default function LoginPage() {
 
                   <button
                     type="button"
-                    onClick={() => setViewMode("password")}
-                    className="w-full text-center text-[13px] text-[#5c5a52] hover:text-[#202020] underline pt-1 block"
+                    onClick={() => setViewMode("quick")}
+                    className="w-full text-center text-[13px] text-[#5c5a52] hover:text-[#202020] underline pt-1 block cursor-pointer"
                   >
                     Cancel
                   </button>

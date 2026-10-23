@@ -153,22 +153,27 @@ export async function POST(req: NextRequest) {
       items: validatedItems,
     });
 
-    // Send order confirmation email asynchronously
-    if (body.customerEmail) {
-      sendOrderConfirmationEmail({
-        orderNumber: body.orderNumber,
-        customerName: body.customerName,
-        customerEmail: body.customerEmail,
-        items: body.items,
-        totalAmount: body.totalAmount,
-        paymentMethod: body.paymentMethod,
-        paymentStatus: body.paymentStatus,
-        address: body.address,
-        city: body.city,
-        state: body.state,
-        pincode: body.pincode,
-      }).catch((e) => console.warn("Email dispatch error:", e));
-    }
+    // Send order notification email to admin dipakh810@gmail.com (& customer if email provided)
+    sendOrderConfirmationEmail({
+      orderNumber: body.orderNumber,
+      customerName: body.customerName,
+      customerPhone: body.customerPhone,
+      customerEmail: body.customerEmail || null,
+      items: validatedItems,
+      subtotal: authoritativeSubtotal,
+      discountAmount: authoritativeDiscount,
+      shippingFee: authoritativeShipping,
+      codFee: authoritativeCod,
+      totalAmount: authoritativeTotal,
+      paymentMethod: body.paymentMethod,
+      paymentStatus: body.paymentStatus,
+      utrNumber: body.utrNumber || null,
+      address: body.address,
+      city: body.city,
+      state: body.state,
+      pincode: body.pincode,
+      landmark: body.landmark || null,
+    }).catch((e) => console.warn("[Email Dispatch Error]:", e));
 
     return NextResponse.json({
       status: "success",
