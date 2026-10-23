@@ -338,24 +338,33 @@ export const PRODUCTS: Product[] = [
     "handle": "kesar-rose-chai",
     "title": "Kashmiri Saffron Rose Chai",
     "subtitle": "Smooth & Fragrant · Rose Petals & Saffron",
-    "price": 654,
-    "originalPrice": 785,
-    "discount": 17,
+    "price": 458,
+    "originalPrice": 654,
+    "discount": 30,
     "rating": 4.9,
     "reviewsCount": 49,
     "weight": "250G",
     "weights": [
-      "100G",
       "250G",
-      "500G"
+      "500G",
+      "750G",
+      "1 KG"
     ],
     "image": "https://in.teabox.com/cdn/shop/files/08.07KashmiriSaffronrosechailistingimage1.jpg?v=1786968501&width=1080",
     "secondaryImage": "https://in.teabox.com/cdn/shop/files/08.07KashmiriSaffronrosechailistingimage2.jpg?v=1786968501&width=1080",
+    "galleryImages": [
+      "https://in.teabox.com/cdn/shop/files/08.07KashmiriSaffronrosechailistingimage1.jpg?v=1786968501&width=1080",
+      "https://in.teabox.com/cdn/shop/files/08.07KashmiriSaffronrosechailistingimage2.jpg?v=1786968501&width=1080",
+      "https://in.teabox.com/cdn/shop/files/08.07KashmiriSaffronrosechailistingimage10-1.jpg?v=1786968501&width=1080",
+      "https://in.teabox.com/cdn/shop/files/08.07KashmiriSaffronrosechailistingimage10-2.jpg?v=1786968501&width=1080",
+      "https://in.teabox.com/cdn/shop/files/08.07KashmiriSaffronrosechailistingimage10-3.jpg?v=1786968501&width=1080",
+      "https://in.teabox.com/cdn/shop/files/08.07KashmiriSaffronrosechailistingimage10-4.jpg?v=1786968501&width=1080"
+    ],
     "category": "chai",
     "format": "Loose Leaf",
     "region": "Kashmir",
     "caffeine": "Medium",
-    "badge": "",
+    "badge": "BESTSELLER",
     "inStock": true
   },
   {

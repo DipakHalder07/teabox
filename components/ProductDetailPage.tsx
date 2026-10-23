@@ -158,6 +158,15 @@ export default function ProductDetailPage({ product }: { product: Product }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [galleryImages.length]);
 
+  // Determine if product is a chai blend
+  const isChai =
+    product.category === "chai" ||
+    product.id.includes("chai") ||
+    product.handle.includes("chai") ||
+    product.title.toLowerCase().includes("chai");
+  const isOjas = product.id === "ojas-ras-chai" || product.handle === "ojas-ras-chai";
+  const isKesar = product.id === "kesar-rose-chai" || product.handle === "kesar-rose-chai";
+
   // Price calculation based on selected weight matching live site
   const getCalculatedPrice = (weight: string) => {
     if (product.id === "organic-green" || product.handle === "organic-green") {
@@ -165,18 +174,54 @@ export default function ProductDetailPage({ product }: { product: Product }) {
       if (weight === "200G") return 454;
       if (weight === "300G") return 667;
     }
+    if (isKesar) {
+      if (weight === "250G") return 458;
+      if (weight === "500G") return 916;
+      if (weight === "750G") return 1373;
+      if (weight === "1 KG" || weight === "1KG") return 1831;
+    }
+    if (isOjas) {
+      if (weight === "100G") return 349;
+      if (weight === "150G") return 499;
+      if (weight === "250G") return 799;
+    }
     if (weight === "100G") return Math.round(product.price * 0.55);
+    if (weight === "150G") return product.price;
     if (weight === "200G") return Math.round(product.price * 1.0);
-    if (weight === "300G") return Math.round(product.price * 1.45);
     if (weight === "250G") return product.price;
+    if (weight === "300G") return Math.round(product.price * 1.45);
     if (weight === "500G") return Math.round(product.price * 1.85);
-    if (weight === "1KG") return Math.round(product.price * 3.4);
+    if (weight === "750G") return Math.round(product.price * 2.7);
+    if (weight === "1KG" || weight === "1 KG") return Math.round(product.price * 3.4);
     if (weight === "50 Teabags") return Math.round(product.price * 1.8);
     if (weight === "2 Boxes") return Math.round(product.price * 1.9);
     return product.price;
   };
 
+  const getCalculatedOriginalPrice = (weight: string) => {
+    if (product.id === "organic-green" || product.handle === "organic-green") {
+      if (weight === "100G") return 290;
+      if (weight === "200G") return 464;
+      if (weight === "300G") return 696;
+    }
+    if (isKesar) {
+      if (weight === "250G") return 654;
+      if (weight === "500G") return 1308;
+      if (weight === "750G") return 1962;
+      if (weight === "1 KG" || weight === "1KG") return 2616;
+    }
+    if (isOjas) {
+      if (weight === "100G") return 420;
+      if (weight === "150G") return 599;
+      if (weight === "250G") return 960;
+    }
+    const curP = getCalculatedPrice(weight);
+    const ratio = product.originalPrice > product.price ? product.originalPrice / product.price : 1.25;
+    return Math.round(curP * ratio);
+  };
+
   const currentPrice = getCalculatedPrice(selectedWeight);
+  const currentOriginalPrice = getCalculatedOriginalPrice(selectedWeight);
 
   // Variant selector with live price & packaging slide sync
   const handleSelectWeight = (w: string) => {
@@ -189,41 +234,65 @@ export default function ProductDetailPage({ product }: { product: Product }) {
       } else if (w === "300G" && galleryImages.length >= 9) {
         setActiveImageIndex(8); // 9th image
       }
+    } else if (isKesar) {
+      if (w === "250G" && galleryImages.length >= 3) {
+        setActiveImageIndex(2);
+      } else if (w === "500G" && galleryImages.length >= 4) {
+        setActiveImageIndex(3);
+      } else if (w === "750G" && galleryImages.length >= 5) {
+        setActiveImageIndex(4);
+      } else if ((w === "1 KG" || w === "1KG") && galleryImages.length >= 6) {
+        setActiveImageIndex(5);
+      }
     }
   };
 
   // Variant options matching live site
   const variants =
     product.weights && product.weights.length > 1
-      ? product.weights.map((w, idx) => ({
-          weight: w,
-          cups:
-            w === "100G"
-              ? "50 cups"
-              : w === "200G"
-              ? "100 cups"
-              : w === "300G"
-              ? "150 cups"
-              : w === "250G"
-              ? "125 cups"
-              : w === "500G"
-              ? "250 cups"
-              : "500 cups",
-          price: getCalculatedPrice(w),
-          originalPrice:
-            w === "200G"
-              ? 464
-              : w === "300G"
-              ? 696
-              : Math.round(getCalculatedPrice(w) * 1.15),
-          badge: idx === 1 ? "MOST POPULAR" : idx === 2 ? "BEST VALUE" : undefined,
-        }))
+      ? product.weights.map((w, idx, arr) => {
+          const price = getCalculatedPrice(w);
+          const originalPrice = getCalculatedOriginalPrice(w);
+          let badge: string | undefined = undefined;
+          if (idx === 1 && arr.length >= 3) {
+            badge = "MOST POPULAR";
+          } else if (idx === arr.length - 1 && arr.length >= 3) {
+            badge = "BEST VALUE";
+          } else if (originalPrice > price) {
+            const savings = Math.round(((originalPrice - price) / originalPrice) * 100);
+            if (savings >= 10) badge = `SAVE ${savings}%`;
+          }
+          return {
+            weight: w,
+            cups:
+              w === "100G"
+                ? "50 cups"
+                : w === "150G"
+                ? "75 cups"
+                : w === "200G"
+                ? "100 cups"
+                : w === "250G"
+                ? "125 cups"
+                : w === "300G"
+                ? "150 cups"
+                : w === "500G"
+                ? "250 cups"
+                : w === "750G"
+                ? "375 cups"
+                : w === "1 KG" || w === "1KG"
+                ? "500 cups"
+                : "100 cups",
+            price,
+            originalPrice,
+            badge,
+          };
+        })
       : [
           {
             weight: product.weight || "Standard Pack",
             cups: "100+ cups",
             price: product.price,
-            originalPrice: Math.round(product.price * 1.2),
+            originalPrice: product.originalPrice || Math.round(product.price * 1.2),
             badge: undefined,
           },
         ];
@@ -250,52 +319,87 @@ export default function ProductDetailPage({ product }: { product: Product }) {
     ).values()
   ).slice(0, 4);
 
-  // Live PDP FAQs
-  const faqs = [
+  // Dynamic Description
+  const productDescription = isOjas
+    ? "A revitalizing Ayurvedic blend of premium Assam CTC black tea, refreshing peppermint, spearmint, lemongrass, and balancing Himalayan spices. Brewed to invigorate your senses and boost daily vitality."
+    : isKesar
+    ? "A luxurious blend of Assam CTC tea, saffron, rose petals, and cardamom, inspired by the royal flavors of Kashmir. Fragrant, floral, and gently spiced, it’s chai at its most elegant."
+    : product.id === "organic-green" || product.handle === "organic-green"
+    ? "A delicate, antioxidant-rich green tea from the misty hills of Darjeeling—smooth, floral, and beautifully balanced."
+    : product.subtitle || `A bold, full-bodied blend crafted from pristine estates in ${product.region}. Vacuum-packed at the source within 48 hours of harvest for unbeatable garden-fresh flavor and aroma.`;
+
+  // Dynamic Feature Badges
+  const featureBadges = [
     {
-      q: "What does Darjeeling green tea taste like?",
-      a: "Unlike typical bitter green teas, Darjeeling whole-leaf green tea is smooth, delicate, and vegetal with natural floral notes and a sweet lingering finish. It offers 0% bitterness when brewed between 80-85°C.",
+      icon: Leaf,
+      title: product.caffeine ? `${product.caffeine}` : isChai ? "Medium" : "Very Low",
+      subtitle: "caffeine",
     },
     {
-      q: "Does this green tea help with weight management?",
-      a: "Yes! High levels of EGCG (epigallocatechin gallate) and polyphenols naturally accelerate metabolism, improve fat oxidation, and assist in weight management as part of an active lifestyle.",
+      icon: Sparkles,
+      title: isChai ? "Whole spices" : "Whole leaf",
+      subtitle: isChai ? "no flavorings" : "no dust",
     },
     {
-      q: "When is the best time to drink green tea?",
-      a: "The ideal times are morning after waking up and 30-45 minutes after meals to support healthy digestion and sustain energy without caffeine jitters.",
+      icon: Sprout,
+      title: isChai ? (product.region || "Assam") : (product.region || "Himalayan"),
+      subtitle: isChai ? "tea base" : "green tea base",
     },
     {
-      q: "How is Teabox green tea different from tea bags?",
-      a: "Most commercial tea bags contain stale 'dust and fannings' with high bitterness. Teabox uses 100% whole leaves vacuum-sealed at the garden within 48 hours of harvest for unrivaled freshness and essential oils.",
+      icon: ShieldCheck,
+      title: product.badge === "AYURVEDIC" ? "Ayurvedic" : isChai ? "No Sugar" : "Certified",
+      subtitle: product.badge === "AYURVEDIC" ? "herbal blend" : isChai ? "Enjoy Hot/Cold" : "organic",
     },
   ];
+
+  // Dynamic PDP FAQs
+  const faqs = isChai
+    ? [
+        {
+          q: `What does ${product.title} taste like?`,
+          a: isOjas
+            ? "Ojas Ras Chai is bright, refreshing, and invigorating. The cooling notes of fresh peppermint and lemongrass balance the rich, robust Assam black tea, while gentle warming notes of ginger and cardamom linger with a sweet, uplifting finish."
+            : isKesar
+            ? "Kashmiri Saffron Rose Chai is decadent and aromatic with sweet floral undertones of dried rose petals, the royal earthy fragrance of Kashmir saffron, and warming green cardamom on a bold Assam tea base."
+            : "A rich, full-bodied cup with comforting natural spice aromas and a creamy, lingering finish when brewed with milk.",
+        },
+        {
+          q: "Can I make this chai with plant-based milk?",
+          a: "Absolutely! This blend pairs exceptionally well with oat milk, almond milk, soy milk, or coconut milk, delivering a wonderfully rich texture and creamy aroma.",
+        },
+        {
+          q: "Does this chai contain added sugar or artificial flavorings?",
+          a: "No! All Teabox chais contain 0% added sugar, 0% preservatives, and zero artificial flavors or aroma syrups. All flavors come exclusively from whole spices and pure estate-grown tea.",
+        },
+        {
+          q: "How is Teabox chai different from tea bags?",
+          a: "Standard tea bags contain stale CTC dust and synthetic flavour granules. Teabox uses premium whole CTC leaves and whole crushed spices vacuum-sealed within 48 hours of pluck for authentic, full-strength aroma.",
+        },
+      ]
+    : [
+        {
+          q: "What does Darjeeling green tea taste like?",
+          a: "Unlike typical bitter green teas, Darjeeling whole-leaf green tea is smooth, delicate, and vegetal with natural floral notes and a sweet lingering finish. It offers 0% bitterness when brewed between 80-85°C.",
+        },
+        {
+          q: "Does this green tea help with weight management?",
+          a: "Yes! High levels of EGCG (epigallocatechin gallate) and polyphenols naturally accelerate metabolism, improve fat oxidation, and assist in weight management as part of an active lifestyle.",
+        },
+        {
+          q: "When is the best time to drink green tea?",
+          a: "The ideal times are morning after waking up and 30-45 minutes after meals to support healthy digestion and sustain energy without caffeine jitters.",
+        },
+        {
+          q: "How is Teabox green tea different from tea bags?",
+          a: "Most commercial tea bags contain stale 'dust and fannings' with high bitterness. Teabox uses 100% whole leaves vacuum-sealed at the garden within 48 hours of harvest for unrivaled freshness and essential oils.",
+        },
+      ];
 
   return (
     <div className="w-full bg-white">
       {/* 1. Main Product Section */}
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-12 py-5 sm:py-8">
-        {/* Breadcrumb matching live site: Home › All Collection › Title */}
-        <nav aria-label="Breadcrumb" className="text-[13px] sm:text-[14px] text-[#747576] mb-5">
-          <ol className="flex items-center gap-1.5 flex-wrap">
-            <li>
-              <Link href="/" className="text-[#1f3a2c] hover:underline">
-                Home
-              </Link>
-            </li>
-            <li>›</li>
-            <li>
-              <Link href="/collections/all" className="text-[#1f3a2c] hover:underline">
-                All Collection
-              </Link>
-            </li>
-            <li>›</li>
-            <li className="text-[#202020] font-medium truncate max-w-[240px]">
-              {product.title}
-            </li>
-          </ol>
-        </nav>
-
-        {/* 2-Column Product Layout */}
+        {/* 2-Column Product Layout: Gallery on Left, Details & Breadcrumbs on Right */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-14 items-start">
           {/* Left Column: Image Gallery (Pixel-perfect to Live Site) */}
           <div className="flex flex-col gap-3 sm:gap-4">
@@ -354,7 +458,7 @@ export default function ProductDetailPage({ product }: { product: Product }) {
                   {galleryImages.map((img, idx) => (
                     <div
                       key={idx}
-                      className="relative w-full h-full shrink-0 flex items-center justify-center p-2 sm:p-4"
+                      className="relative w-full h-full shrink-0 flex items-center justify-center"
                     >
                       <Image
                         src={img}
@@ -362,7 +466,7 @@ export default function ProductDetailPage({ product }: { product: Product }) {
                         fill
                         loading={idx === 0 ? "eager" : "lazy"}
                         priority={idx === 0}
-                        className="object-contain p-2 sm:p-4 select-none pointer-events-none transition-transform duration-500 ease-out"
+                        className="object-contain select-none pointer-events-none transition-transform duration-500 ease-out"
                         sizes="(max-width: 1024px) 100vw, 50vw"
                       />
                     </div>
@@ -370,16 +474,7 @@ export default function ProductDetailPage({ product }: { product: Product }) {
                 </div>
               </div>
 
-              {/* Slide Counter Pill (Bottom Left) */}
-              {galleryImages.length > 1 && (
-                <div className="absolute bottom-3.5 left-3.5 sm:bottom-4 sm:left-4 z-20 bg-white/90 backdrop-blur-xs border border-[#e7e2d8] text-[#5c5a52] text-[11.5px] font-bold px-2.5 py-1 rounded-full shadow-2xs pointer-events-none flex items-center gap-1.5">
-                  <span className="text-[#1f3a2c]">{activeImageIndex + 1}</span>
-                  <span className="text-[#a09e99]">/</span>
-                  <span>{galleryImages.length}</span>
-                </div>
-              )}
-
-              {/* Zoom Trigger Button at Top Right (Matches Live Site Organic Green) */}
+              {/* Zoom Trigger Button at Top Right */}
               <button
                 type="button"
                 onMouseEnter={() => {
@@ -416,7 +511,7 @@ export default function ProductDetailPage({ product }: { product: Product }) {
               </div>
             </div>
 
-            {/* Thumbnail Row with smooth hover & auto-scroll (All 9 live carousel items) */}
+            {/* Thumbnail Row with smooth hover & auto-scroll */}
             {galleryImages.length > 1 && (
               <div
                 ref={thumbnailContainerRef}
@@ -439,7 +534,7 @@ export default function ProductDetailPage({ product }: { product: Product }) {
                       alt={`Thumbnail ${idx + 1}`}
                       fill
                       sizes="68px"
-                      className="object-contain p-0.5"
+                      className="object-contain"
                     />
                   </button>
                 ))}
@@ -447,10 +542,42 @@ export default function ProductDetailPage({ product }: { product: Product }) {
             )}
           </div>
 
-          {/* Right Column: Details & Purchasing */}
-          <div className="flex flex-col gap-5 text-[#202020]">
+          {/* Right Column: Breadcrumb & Details & Purchasing (Safe Sticky) */}
+          <div className="flex flex-col gap-4 sm:gap-5 text-[#202020] lg:sticky lg:top-[90px] self-start">
+            {/* 1. Breadcrumb - Positioned on Right Side directly above Product Title like live Teabox site */}
+            <nav aria-label="Breadcrumb" className="product-info__tb-breadcrumb text-[14px] sm:text-[15px] text-[#5c5a52]">
+              <ol className="flex items-center flex-wrap gap-0 leading-normal">
+                <li>
+                  <Link
+                    href="/"
+                    className="av-hover-underline text-[#5c5a52] hover:text-[#202020] transition-colors"
+                  >
+                    Home
+                  </Link>
+                </li>
+                <li className="mx-1 text-[#5c5a52] select-none text-[15px] font-normal" aria-hidden="true">
+                  ›
+                </li>
+                <li>
+                  <Link
+                    href="/collections/all"
+                    className="av-hover-underline text-[#5c5a52] hover:text-[#202020] transition-colors"
+                  >
+                    All Collection
+                  </Link>
+                </li>
+                <li className="mx-1 text-[#5c5a52] select-none text-[15px] font-normal" aria-hidden="true">
+                  ›
+                </li>
+                <li className="text-[#5c5a52] font-normal truncate max-w-[240px] sm:max-w-none" aria-current="page">
+                  {product.title}
+                </li>
+              </ol>
+            </nav>
+
+            {/* 2. Product Title & Reviews */}
             <div>
-              <h1 className="text-[26px] sm:text-[34px] font-bold text-[#202020] leading-tight">
+              <h1 className="text-[28px] sm:text-[34px] font-bold text-[#202020] leading-[1.18] tracking-[-0.4px]">
                 {product.title}
               </h1>
 
@@ -461,13 +588,13 @@ export default function ProductDetailPage({ product }: { product: Product }) {
                   e.preventDefault();
                   document.getElementById("judgeme_product_reviews")?.scrollIntoView({ behavior: "smooth" });
                 }}
-                className="inline-flex items-center gap-2 mt-2.5 group cursor-pointer"
+                className="inline-flex items-center gap-2 mt-2 group cursor-pointer"
               >
                 <div className="flex items-center text-[#1f3a2c]">
                   {[...Array(5)].map((_, i) => (
                     <Star
                       key={i}
-                      size={16}
+                      size={15}
                       className="fill-[#1f3a2c] text-[#1f3a2c]"
                     />
                   ))}
@@ -482,50 +609,29 @@ export default function ProductDetailPage({ product }: { product: Product }) {
               </a>
             </div>
 
-            {/* Description matching live site */}
-            <p className="text-[15px] sm:text-[16px] text-[#5c5a52] leading-relaxed">
-              {product.id === "organic-green" || product.handle === "organic-green"
-                ? "A delicate, antioxidant-rich green tea from the misty hills of Darjeeling—smooth, floral, and beautifully balanced."
-                : `A bold, full-bodied blend crafted from pristine estates in ${product.region}. Vacuum-packed at the source within 48 hours of harvest for unbeatable garden-fresh flavor and aroma.`}
+            {/* 3. Description matching live site */}
+            <p className="text-[15px] sm:text-[16px] text-[#33463a] leading-[1.55]">
+              {productDescription}
             </p>
 
-            {/* 4 Key Feature Badges 2x2 Grid (Exact Live Site Icons) */}
-            <div className="grid grid-cols-2 gap-3.5 py-3.5 border-y border-[#E7E2D8]">
-              <div className="flex items-center gap-2.5 text-[14px] text-[#202020]">
-                <div className="w-6 h-6 shrink-0 flex items-center justify-center text-[#016c2f]">
-                  <Leaf size={18} />
-                </div>
-                <span className="text-[13.5px] leading-tight">
-                  <b>Very Low</b><br />caffeine
-                </span>
-              </div>
-              <div className="flex items-center gap-2.5 text-[14px] text-[#202020]">
-                <div className="w-6 h-6 shrink-0 flex items-center justify-center text-[#016c2f]">
-                  <Sparkles size={18} />
-                </div>
-                <span className="text-[13.5px] leading-tight">
-                  <b>Whole leaf</b><br />no dust
-                </span>
-              </div>
-              <div className="flex items-center gap-2.5 text-[14px] text-[#202020]">
-                <div className="w-6 h-6 shrink-0 flex items-center justify-center text-[#016c2f]">
-                  <Sprout size={18} />
-                </div>
-                <span className="text-[13.5px] leading-tight">
-                  <b>Himalayan</b><br />green tea base
-                </span>
-              </div>
-              <div className="flex items-center gap-2.5 text-[14px] text-[#202020]">
-                <div className="w-6 h-6 shrink-0 flex items-center justify-center text-[#016c2f]">
-                  <ShieldCheck size={18} />
-                </div>
-                <span className="text-[13.5px] leading-tight">
-                  <b>Certified</b><br />organic
-                </span>
-              </div>
+            {/* 4. Key Feature Badges 2x2 Grid (Exact Live Site Icons) */}
+            <div className="grid grid-cols-2 gap-3.5 py-3 border-y border-[#E7E2D8]">
+              {featureBadges.map((badge, idx) => {
+                const Icon = badge.icon;
+                return (
+                  <div key={idx} className="flex items-start gap-2.5 text-[14px] text-[#202020]">
+                    <div className="w-6 h-6 shrink-0 flex items-center justify-center text-[#016c2f] mt-0.5">
+                      <Icon size={18} />
+                    </div>
+                    <span className="text-[13.5px] leading-tight">
+                      <b>{badge.title}</b><br />{badge.subtitle}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
 
-            {/* Size / Weight Selection Cards */}
+            {/* 5. Size / Weight Selection Cards matching Teabox .block-swatch--tb-weight */}
             <div className="flex flex-col gap-2.5">
               <span className="text-[13px] font-bold uppercase tracking-wider text-[#5c5a52]">
                 Pack Size:
@@ -545,8 +651,10 @@ export default function ProductDetailPage({ product }: { product: Product }) {
                     >
                       {v.badge && (
                         <span
-                          className={`absolute -top-2.5 right-4 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                            v.badge === "BEST VALUE" ? "bg-[#1c3327]" : "bg-[#5c5a52]"
+                          className={`absolute -top-2.5 right-3 text-white text-[10.5px] font-bold px-2.5 py-0.5 rounded-[4px] uppercase tracking-wide ${
+                            v.badge === "BEST VALUE" || v.badge === "MOST POPULAR"
+                              ? "bg-[#1c3327]"
+                              : "bg-[#5c5a52]"
                           }`}
                         >
                           {v.badge}
@@ -555,19 +663,15 @@ export default function ProductDetailPage({ product }: { product: Product }) {
 
                       <div className="flex items-center gap-3">
                         <div
-                          className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                            isSelected ? "border-[#1f3a2c]" : "border-[#b5b4af]"
+                          className={`w-[18px] h-[18px] rounded-full border-[1.5px] border-[#e7e2d8] flex items-center justify-center shrink-0 transition-all ${
+                            isSelected ? "border-[5.5px] border-[#1f3a2c] bg-white" : "bg-white"
                           }`}
-                        >
-                          {isSelected && (
-                            <div className="w-2.5 h-2.5 rounded-full bg-[#1f3a2c]" />
-                          )}
-                        </div>
-                        <div>
-                          <span className="text-[15px] font-bold text-[#202020]">
+                        />
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-[15px] font-bold text-[#202020] uppercase tracking-[0.5px]">
                             {v.weight}
                           </span>
-                          <span className="text-[13px] text-[#747576] ml-2">
+                          <span className="text-[13px] text-[#5c5a52] font-normal">
                             ≈ {v.cups}
                           </span>
                         </div>
@@ -575,11 +679,11 @@ export default function ProductDetailPage({ product }: { product: Product }) {
 
                       <div className="flex items-baseline gap-2">
                         {v.originalPrice > v.price && (
-                          <span className="text-[13px] text-[#8e8d8a] line-through">
+                          <span className="text-[14px] text-[#747576] line-through font-normal">
                             ₹{v.originalPrice.toLocaleString("en-IN")}
                           </span>
                         )}
-                        <span className="text-[17px] font-bold text-[#202020]">
+                        <span className="text-[17px] sm:text-[18px] font-bold text-[#202020]">
                           ₹{v.price.toLocaleString("en-IN")}
                         </span>
                       </div>
@@ -589,8 +693,8 @@ export default function ProductDetailPage({ product }: { product: Product }) {
               </div>
             </div>
 
-            {/* Quantity Stepper & Add to Cart Button */}
-            <div className="flex items-center gap-3 pt-2">
+            {/* 6. Quantity Stepper & Add to Cart Button */}
+            <div className="flex items-center gap-3 pt-1">
               <div className="flex items-center border border-[#E7E2D8] rounded-lg p-1 bg-[#fafafa] shrink-0">
                 <button
                   type="button"
@@ -616,19 +720,24 @@ export default function ProductDetailPage({ product }: { product: Product }) {
               <button
                 type="button"
                 onClick={handleAddToCart}
-                className="flex-1 bg-[#02cb5a] hover:bg-[#02cb5a]/90 text-[#1f3a2c] font-bold text-[17px] sm:text-[18px] h-14 rounded-[6px] tracking-[0.3px] uppercase transition-all shadow-sm active:scale-98 text-center cursor-pointer flex items-center justify-center"
+                className="flex-1 bg-[#02cb5a] hover:bg-[#02cb5a]/90 text-[#1f3a2c] font-bold text-[17px] sm:text-[18px] h-14 rounded-[6px] tracking-[0.4px] uppercase transition-all shadow-sm active:scale-98 text-center cursor-pointer flex items-center justify-center gap-2"
               >
-                Add to cart — ₹{(currentPrice * quantity).toLocaleString("en-IN")}
+                <span>Add to cart — ₹{(currentPrice * quantity).toLocaleString("en-IN")}</span>
+                {currentOriginalPrice > currentPrice && (
+                  <s className="text-[#1f3a2c]/65 text-[15px] font-normal line-through">
+                    ₹{(currentOriginalPrice * quantity).toLocaleString("en-IN")}
+                  </s>
+                )}
               </button>
             </div>
 
-            {/* Delivery Promise Banner */}
-            <p className="text-[13px] text-center text-[#5c5a52] flex items-center justify-center gap-1.5 font-medium pt-1">
-              <span>🟢</span>
+            {/* 7. Delivery Promise Box matching live site */}
+            <div className="bg-[#fafafa] border border-[#e7e2d8] rounded-[8px] py-2.5 px-4 text-[13.5px] text-[#202020] flex items-center justify-center gap-2 mt-1">
+              <span className="text-[10px]">🟢</span>
               <span>SHIPS BY <b>TOMORROW</b></span>
-              <span className="text-[#a09e99]">|</span>
+              <span className="text-[#b5b4af]">|</span>
               <span>🌍 2–4 DAYS <b>PAN INDIA</b></span>
-            </p>
+            </div>
           </div>
         </div>
       </div>
@@ -666,14 +775,20 @@ export default function ProductDetailPage({ product }: { product: Product }) {
         </div>
       </div>
 
-      {/* 3. Ingredients & Health Benefits (Live Site Sections) */}
+      {/* 3. Ingredients & Quality Promise (Live Site Sections) */}
       <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-12 py-12 sm:py-16 grid grid-cols-1 md:grid-cols-2 gap-10">
         <div className="bg-[#fcfbf9] border border-[#E7E2D8] rounded-2xl p-6 sm:p-8">
           <h3 className="font-stencil text-[22px] sm:text-[26px] font-bold text-[#202020] mb-4">
             Ingredients
           </h3>
           <p className="text-[15px] text-[#5c5a52] leading-relaxed mb-4">
-            100% Darjeeling Whole Leaf Green Tea. Sourced directly from certified organic tea gardens in Darjeeling, India.
+            {isOjas
+              ? "100% Assam CTC Black Tea, Peppermint, Spearmint, Lemongrass, Green Cardamom, Ginger, Cinnamon, and Cloves. Hand-blended with pure Ayurvedic herbs."
+              : isKesar
+              ? "100% Assam CTC Tea, Hand-Picked Kashmiri Saffron, Sun-Dried Damask Rose Petals, and Green Cardamom Pods. Sourced directly from certified estates."
+              : isChai
+              ? "100% Single-Estate Indian Black Tea, Crushed Whole Green Cardamom, Cinnamon Bark, Cloves, and Fresh Ginger. 100% real spices."
+              : "100% Darjeeling Whole Leaf Green Tea. Sourced directly from certified organic tea gardens in Darjeeling, India."}
           </p>
           <div className="flex items-center gap-2 text-[14px] font-semibold text-[#016c2f]">
             <Check size={18} />
@@ -683,20 +798,32 @@ export default function ProductDetailPage({ product }: { product: Product }) {
 
         <div className="bg-[#fcfbf9] border border-[#E7E2D8] rounded-2xl p-6 sm:p-8">
           <h3 className="font-stencil text-[22px] sm:text-[26px] font-bold text-[#202020] mb-4">
-            These Teas Are
+            {isChai ? "This Chai Is" : "These Teas Are"}
           </h3>
           <ul className="space-y-2.5 text-[14.5px] text-[#5c5a52]">
             <li className="flex items-center gap-2.5">
               <span className="w-2 h-2 rounded-full bg-[#02cb5a]" />
-              <span><b>0% Bitterness:</b> Tender spring & summer leaves smooth to the palate.</span>
+              <span>
+                <b>{isChai ? "0% Added Sugar:" : "0% Bitterness:"}</b>{" "}
+                {isChai
+                  ? "Pure CTC tea and natural whole spices with zero artificial flavors or aroma syrups."
+                  : "Tender spring & summer leaves smooth to the palate."}
+              </span>
             </li>
             <li className="flex items-center gap-2.5">
               <span className="w-2 h-2 rounded-full bg-[#02cb5a]" />
-              <span><b>Rich in EGCG:</b> Powerful polyphenols support active metabolism.</span>
+              <span>
+                <b>{isChai ? "Whole Spices:" : "Rich in EGCG:"}</b>{" "}
+                {isChai
+                  ? "Crushed whole pods and botanical herbs providing natural digestive energy."
+                  : "Powerful polyphenols support active metabolism."}
+              </span>
             </li>
             <li className="flex items-center gap-2.5">
               <span className="w-2 h-2 rounded-full bg-[#02cb5a]" />
-              <span><b>Garden Vacuum-Sealed:</b> Locked at the peak of freshness.</span>
+              <span>
+                <b>Garden Vacuum-Sealed:</b> Locked at the peak of freshness within 48 hours of pluck.
+              </span>
             </li>
           </ul>
         </div>
@@ -705,7 +832,7 @@ export default function ProductDetailPage({ product }: { product: Product }) {
       {/* 4. Brewing Guide */}
       <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-12 pb-12 sm:pb-16">
         <h2 className="font-stencil text-[26px] sm:text-[34px] font-bold text-center text-[#202020] mb-8">
-          How To Steep?
+          {isChai ? "How To Make Chai?" : "How To Steep?"}
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
@@ -713,9 +840,13 @@ export default function ProductDetailPage({ product }: { product: Product }) {
             <div className="w-12 h-12 rounded-full bg-white border border-[#E7E2D8] flex items-center justify-center font-bold text-[18px] text-[#016c2f] mb-3">
               1
             </div>
-            <h4 className="font-bold text-[16px] text-[#202020] mb-1">Heat Water (80–85°C)</h4>
+            <h4 className="font-bold text-[16px] text-[#202020] mb-1">
+              {isChai ? "Boil Water & Milk" : "Heat Water (80–85°C)"}
+            </h4>
             <p className="text-[13.5px] text-[#5c5a52]">
-              Bring 150–200ml of fresh water just below boiling point (80–85°C) to preserve delicate antioxidants.
+              {isChai
+                ? "Combine 100ml fresh water and 100ml milk (dairy or plant-based) in a saucepan and bring to a gentle boil."
+                : "Bring 150–200ml of fresh water just below boiling point (80–85°C) to preserve delicate antioxidants."}
             </p>
           </div>
 
@@ -723,9 +854,13 @@ export default function ProductDetailPage({ product }: { product: Product }) {
             <div className="w-12 h-12 rounded-full bg-white border border-[#E7E2D8] flex items-center justify-center font-bold text-[18px] text-[#016c2f] mb-3">
               2
             </div>
-            <h4 className="font-bold text-[16px] text-[#202020] mb-1">Add Leaves &amp; Steep</h4>
+            <h4 className="font-bold text-[16px] text-[#202020] mb-1">
+              {isChai ? "Add Leaves & Simmer" : "Add Leaves & Steep"}
+            </h4>
             <p className="text-[13.5px] text-[#5c5a52]">
-              Add 1 tsp (2.5g) of whole leaves. Steep for 3–4 minutes for a balanced, golden brew.
+              {isChai
+                ? "Add 1 tsp (2.5g) of chai blend. Simmer on medium heat for 3–4 minutes until aromatic and rich golden brown."
+                : "Add 1 tsp (2.5g) of whole leaves. Steep for 3–4 minutes for a balanced, golden brew."}
             </p>
           </div>
 
@@ -733,9 +868,13 @@ export default function ProductDetailPage({ product }: { product: Product }) {
             <div className="w-12 h-12 rounded-full bg-white border border-[#E7E2D8] flex items-center justify-center font-bold text-[18px] text-[#016c2f] mb-3">
               3
             </div>
-            <h4 className="font-bold text-[16px] text-[#202020] mb-1">Strain &amp; Savor</h4>
+            <h4 className="font-bold text-[16px] text-[#202020] mb-1">
+              {isChai ? "Strain & Savor Hot" : "Strain & Savor"}
+            </h4>
             <p className="text-[13.5px] text-[#5c5a52]">
-              Strain and enjoy pure. Leaves can be re-steeped up to 2 additional times.
+              {isChai
+                ? "Sweeten to taste with raw sugar or jaggery. Strain through a fine sieve into your cup and enjoy hot!"
+                : "Strain and enjoy pure. Leaves can be re-steeped up to 2 additional times."}
             </p>
           </div>
         </div>
