@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Star } from "lucide-react";
-import { motion } from "motion/react";
 import { Product } from "@/data/products";
 import { useCart } from "./context/CartContext";
 
@@ -33,10 +32,8 @@ export default function ProductCard({ product }: { product: Product }) {
     : `ADD — ₹${product.price.toLocaleString("en-IN")}`;
 
   return (
-    <motion.div
-      whileHover={{ y: -4 }}
-      transition={{ duration: 0.2 }}
-      className="group relative bg-white border border-[#E7E2D8] hover:border-[#1f3a2c]/30 hover:shadow-md rounded-[12px] overflow-hidden flex flex-col justify-between transition-shadow"
+    <div
+      className="group relative bg-white border border-[#E7E2D8] rounded-[12px] overflow-hidden flex flex-col justify-between"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -132,6 +129,6 @@ export default function ProductCard({ product }: { product: Product }) {
           )}
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

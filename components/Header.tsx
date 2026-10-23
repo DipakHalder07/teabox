@@ -594,9 +594,18 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
                 <Link
                   href="/pages/corporate-gifting-2026"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="text-[16px] font-semibold text-[#1f3a2c] py-2"
+                  className="text-[16px] font-semibold text-[#1f3a2c] py-2 border-b border-[#e7e2d8]"
                 >
                   Corporate Gifting
+                </Link>
+
+                <Link
+                  href="/account/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-[16px] font-bold text-[#016c2f] py-2.5 flex items-center gap-2"
+                >
+                  <User size={18} />
+                  <span>Quick Login / Account</span>
                 </Link>
               </div>
 
