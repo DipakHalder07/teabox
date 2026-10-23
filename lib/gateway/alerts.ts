@@ -30,7 +30,6 @@ export function reviewLink(baseUrl: string, sessionId: string) {
 /** Where alerts go: the number set in admin, or the logged-in WhatsApp itself ("message yourself"). */
 async function alertTarget(): Promise<string | null> {
   if (whatsAppProvider() !== "qr") return null; // the official Cloud API cannot send free text
-  if (!(await getToggles()).whatsapp) return null;
   const settings = await getAlertSettings();
   if (!settings.enabled) return null;
   const status = await getWhatsAppServiceStatus();
@@ -50,14 +49,15 @@ interface Draft {
   address: string;
   city: string;
   pincode: string;
+  landmark?: string | null;
   priced: { items: Array<{ title: string; quantity: number; weight?: string | null }> };
 }
 
-/** Sent once per checkout, when the customer first sees the payment QR. */
+/** Sent immediately when the customer starts a checkout session. */
 export async function alertNewCheckout(sessionId: string, baseUrl: string) {
   const to = await alertTarget();
   if (!to) {
-    console.log("[TeaPay] Order alert skipped: WhatsApp login/alerts off or WhatsApp not connected");
+    console.log("[TeaPay] Order alert skipped: WhatsApp alerts off or WhatsApp not connected");
     return;
   }
 
@@ -73,19 +73,89 @@ export async function alertNewCheckout(sessionId: string, baseUrl: string) {
   const items = draft.priced.items.map((i) => `${i.title}${i.weight ? ` (${i.weight})` : ""} ×${i.quantity}`).join(", ");
   const minutesLeft = Math.max(1, Math.round((session.expiresAt.getTime() - Date.now()) / 60000));
 
+  const startTime = clock(session.createdAt);
+  const expiryTime = clock(session.expiresAt);
+  const dateStr = session.createdAt.toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
   const text = [
-    `🛒 *New UPI order* ${session.orderNumber}`,
-    `${draft.customerName} · +91 ${draft.customerPhone}`,
-    `${draft.address}, ${draft.city} ${draft.pincode}`,
-    `Items: ${items}`,
-    `Pay: *${rupees(session.payPaise)}* (order ${rupees(session.orderPaise)})`,
-    `⏱ ${minutesLeft} min to pay (until ${clock(session.expiresAt)})`,
+    `🛒 *New Checkout Started* · Order #${session.orderNumber}`,
+    `🕒 *Started:* ${startTime} (${dateStr})`,
+    `⏱ *Payment Window:* ${minutesLeft} min (expires at ${expiryTime})`,
     ``,
-    `Check & confirm: ${reviewLink(baseUrl, session.id)}`,
+    `👤 *Customer:* ${draft.customerName}`,
+    `📞 *Phone:* +91 ${draft.customerPhone}`,
+    `📍 *Delivery Address:*`,
+    `${draft.address}, ${draft.city} - ${draft.pincode}${draft.landmark ? ` (Near: ${draft.landmark})` : ""}`,
+    ``,
+    `📦 *Order Items:*`,
+    `${items}`,
+    ``,
+    `💰 *Payable Amount:* *${rupees(session.payPaise)}* (Total: ${rupees(session.orderPaise)})`,
+    ``,
+    `🔗 *Quick Review & 1-Click Confirm:*`,
+    `${reviewLink(baseUrl, session.id)}`,
   ].join("\n");
 
   await sendWhatsAppText(to, text);
   console.log(`[TeaPay] Order alert for ${session.orderNumber} sent to +${to}`);
+}
+
+/** Sent when a Cash on Delivery (COD) order is placed. */
+export async function alertCodOrder(
+  order: {
+    orderNumber: string;
+    customerName: string;
+    customerPhone: string;
+    address: string;
+    city: string;
+    state: string;
+    pincode: string;
+    landmark?: string | null;
+    totalAmount: number;
+    items: Array<{ title: string; quantity: number; weight?: string | null }>;
+    createdAt?: Date | string;
+  },
+  baseUrl: string
+) {
+  const to = await alertTarget();
+  if (!to) return;
+
+  const now = order.createdAt ? new Date(order.createdAt) : new Date();
+  const timeStr = clock(now);
+  const dateStr = now.toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  const items = order.items.map((i) => `${i.title}${i.weight ? ` (${i.weight})` : ""} ×${i.quantity}`).join(", ");
+
+  const text = [
+    `📦 *New Cash on Delivery (COD) Order* · #${order.orderNumber}`,
+    `🕒 *Started / Placed:* ${timeStr} (${dateStr})`,
+    `💵 *Payment Method:* Cash on Delivery (COD)`,
+    ``,
+    `👤 *Customer:* ${order.customerName}`,
+    `📞 *Phone:* +91 ${order.customerPhone}`,
+    `📍 *Delivery Address:*`,
+    `${order.address}, ${order.city}, ${order.state} - ${order.pincode}${order.landmark ? ` (Near: ${order.landmark})` : ""}`,
+    ``,
+    `📦 *Order Items:*`,
+    `${items}`,
+    ``,
+    `💰 *Total Amount:* *₹${order.totalAmount.toLocaleString("en-IN")}*`,
+    ``,
+    `🔗 *View Live Order & Invoice:*`,
+    `${baseUrl}/order/${order.orderNumber}`,
+  ].join("\n");
+
+  await sendWhatsAppText(to, text).catch((e) => console.warn("[TeaPay] COD alert error:", e?.message || e));
+  console.log(`[TeaPay] COD order alert for ${order.orderNumber} sent to +${to}`);
 }
 
 /** Sent when a payment confirms automatically (not when the admin confirmed it). */

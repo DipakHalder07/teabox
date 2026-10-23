@@ -5,6 +5,8 @@ import { verifyAdminRequest } from "@/lib/auth";
 import { orderCreationSchema, cleanIndianPhone } from "@/lib/validations/checkout";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { getSubmittedUtr } from "@/lib/manualUpi";
+import { alertCodOrder } from "@/lib/gateway/alerts";
+import { publicBaseUrl } from "@/lib/gateway/http";
 
 export async function GET(req: NextRequest) {
   try {
@@ -147,6 +149,13 @@ export async function POST(req: NextRequest) {
       pincode: body.pincode,
       landmark: body.landmark || null,
     }).catch((e) => console.warn("[Email Dispatch Error]:", e));
+
+    // Send WhatsApp alert to shop owner for COD orders
+    if (body.paymentMethod === "cod") {
+      alertCodOrder(saved, publicBaseUrl(req)).catch((e) =>
+        console.warn("[WhatsApp COD Alert Error]:", e?.message || e)
+      );
+    }
 
     return NextResponse.json({
       status: "success",

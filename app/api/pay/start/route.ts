@@ -32,8 +32,10 @@ export async function POST(req: NextRequest) {
     }
 
     const view = await sessionView(session);
-    // The QR is on screen: tell the shop on WhatsApp (order details + confirm link).
-    if (view.upiUri) after(() => alertNewCheckout(session.id, publicBaseUrl(req)).catch((e) => console.warn("[TeaPay] WhatsApp order alert failed:", e?.message || e)));
+    // Send real-time WhatsApp alert to shop owner immediately when customer starts checkout
+    alertNewCheckout(session.id, publicBaseUrl(req)).catch((e) =>
+      console.warn("[TeaPay] WhatsApp order alert failed:", e?.message || e)
+    );
     return NextResponse.json(view);
   } catch (error) {
     return errorResponse(error, "Could not start the payment");
