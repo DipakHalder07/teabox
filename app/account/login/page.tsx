@@ -27,6 +27,7 @@ export default function LoginPage() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState("");
+  const [inlineError, setInlineError] = useState<string | null>(null);
 
   // Refs for 4-digit OTP auto-focus
   const otpInputsRef = useRef<(HTMLInputElement | null)[]>([]);
@@ -58,14 +59,13 @@ export default function LoginPage() {
   // Step 1: Send 4-Digit Verification Code to Email
   const handleSendEmailOtp = (e: React.FormEvent) => {
     e.preventDefault();
+    setInlineError(null);
     const cleanEmail = email.trim().toLowerCase();
     setEmail(cleanEmail);
 
     const result = emailOtpSchema.safeParse({ email: cleanEmail });
     if (!result.success) {
-      toast.error("Invalid email address", {
-        description: "Please enter a valid email address.",
-      });
+      setInlineError("Please enter a valid email address.");
       return;
     }
 
@@ -74,10 +74,6 @@ export default function LoginPage() {
     setGeneratedOtp(code);
     setOtpCode(["", "", "", ""]);
     setOtpSent(true);
-
-    toast.success("Verification Code Sent!", {
-      description: `4-digit code sent to ${cleanEmail}. (Demo Code: ${code})`,
-    });
 
     // Focus first input box shortly after render
     setTimeout(() => {
@@ -88,19 +84,16 @@ export default function LoginPage() {
   // Step 2: Verify Code & Authenticate
   const handleVerifyEmailOtp = (e?: React.FormEvent, codeOverride?: string) => {
     if (e) e.preventDefault();
+    setInlineError(null);
     const entered = codeOverride || otpCode.join("");
 
     if (entered.length < 4) {
-      toast.error("Incomplete code", {
-        description: "Please enter the complete 4-digit verification code.",
-      });
+      setInlineError("Please enter the complete 4-digit verification code.");
       return;
     }
 
     if (generatedOtp && entered !== generatedOtp && entered !== "1234") {
-      toast.error("Invalid code", {
-        description: `Incorrect verification code. Please check your code (Demo Code: ${generatedOtp}).`,
-      });
+      setInlineError(`Incorrect verification code. Please enter the code (Demo Code: ${generatedOtp}).`);
       return;
     }
 
@@ -111,10 +104,6 @@ export default function LoginPage() {
       setIsLoggedIn(true);
       setLoggedInUser(email);
       restoreCustomerCart(email);
-
-      toast.success("Verified successfully!", {
-        description: `Logged in as ${email}. Welcome to Teabox!`,
-      });
     }, 400);
   };
 
@@ -298,6 +287,12 @@ export default function LoginPage() {
                       </div>
                     </div>
 
+                    {inlineError && (
+                      <p className="text-[12.5px] font-semibold text-[#c53030] bg-[#fff5f5] border border-[#feb2b2] rounded-lg p-2.5 text-center">
+                        {inlineError}
+                      </p>
+                    )}
+
                     <button
                       type="submit"
                       className="w-full bg-[#1f3a2c] hover:bg-[#14281e] text-white font-bold text-[14.5px] py-3.5 rounded-xl transition-all cursor-pointer shadow-sm tracking-wide flex items-center justify-center gap-2 mt-2"
@@ -426,6 +421,12 @@ export default function LoginPage() {
                         />
                       ))}
                     </div>
+
+                    {inlineError && (
+                      <p className="text-[12.5px] font-semibold text-[#c53030] bg-[#fff5f5] border border-[#feb2b2] rounded-lg p-2.5 text-center">
+                        {inlineError}
+                      </p>
+                    )}
 
                     <button
                       type="submit"
