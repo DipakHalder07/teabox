@@ -3,11 +3,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
 import { useCart } from "./context/CartContext";
 import { Search, User, ShoppingBag, Menu, X, ChevronDown, ArrowRight } from "lucide-react";
 
 export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => void }) {
+  const pathname = usePathname();
   const { openCart, openSearch, totalCount } = useCart();
   const [activeMega, setActiveMega] = useState<string | null>(null);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
@@ -112,8 +114,8 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               />
             </Link>
 
-            {/* Desktop Navigation Links */}
-            <nav className="flex items-center gap-5 xl:gap-6">
+            {/* Desktop Navigation Links: Exact Live Teabox font-size 18px / font-weight 600 */}
+            <nav className="flex items-center gap-5 xl:gap-7">
               {/* Shop Teas with Mega Menu */}
               <div
                 className="relative"
@@ -124,14 +126,16 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               >
                 <Link
                   href="/collections/all"
-                  className={`flex items-center gap-1.5 py-4 text-[15px] font-medium text-[#202020] hover:text-[#016c2f] transition-colors ${
-                    activeMega === "shop" ? "text-[#016c2f]" : ""
+                  className={`relative py-5 flex items-center gap-1.5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#202020] hover:text-[#016c2f] transition-colors after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-1 after:h-[2.5px] after:bg-[#1A1A18] after:transition-opacity after:duration-150 ${
+                    activeMega === "shop" || pathname === "/collections/all" || (pathname?.startsWith("/collections") && pathname !== "/collections/trial-packs" && pathname !== "/collections/chai" && pathname !== "/collections/green-tea" && pathname !== "/collections/gifts")
+                      ? "after:opacity-100 text-[#016c2f]"
+                      : "after:opacity-0"
                   }`}
                 >
                   <span>Shop Teas</span>
                   <ChevronDown
-                    size={13}
-                    strokeWidth={2}
+                    size={12}
+                    strokeWidth={2.2}
                     className={`transition-transform duration-200 ${
                       activeMega === "shop" ? "rotate-180 text-[#016c2f]" : "text-[#747576]"
                     }`}
@@ -142,25 +146,41 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               {/* Direct links */}
               <Link
                 href="/collections/trial-packs"
-                className="text-[15px] font-medium text-[#202020] hover:text-[#016c2f] transition-colors whitespace-nowrap"
+                className={`relative py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#202020] hover:text-[#016c2f] transition-colors whitespace-nowrap after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-1 after:h-[2.5px] after:bg-[#1A1A18] after:transition-opacity after:duration-150 ${
+                  pathname === "/collections/trial-packs"
+                    ? "after:opacity-100 text-[#016c2f]"
+                    : "after:opacity-0"
+                }`}
               >
                 Trial Packs
               </Link>
               <Link
                 href="/collections/chai"
-                className="text-[15px] font-medium text-[#202020] hover:text-[#016c2f] transition-colors whitespace-nowrap"
+                className={`relative py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#202020] hover:text-[#016c2f] transition-colors whitespace-nowrap after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-1 after:h-[2.5px] after:bg-[#1A1A18] after:transition-opacity after:duration-150 ${
+                  pathname === "/collections/chai"
+                    ? "after:opacity-100 text-[#016c2f]"
+                    : "after:opacity-0"
+                }`}
               >
                 Chai
               </Link>
               <Link
                 href="/collections/green-tea"
-                className="text-[15px] font-medium text-[#202020] hover:text-[#016c2f] transition-colors whitespace-nowrap"
+                className={`relative py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#202020] hover:text-[#016c2f] transition-colors whitespace-nowrap after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-1 after:h-[2.5px] after:bg-[#1A1A18] after:transition-opacity after:duration-150 ${
+                  pathname === "/collections/green-tea"
+                    ? "after:opacity-100 text-[#016c2f]"
+                    : "after:opacity-0"
+                }`}
               >
                 Green
               </Link>
               <Link
                 href="/collections/all"
-                className="text-[15px] font-medium text-[#c87a1d] hover:opacity-80 transition-opacity whitespace-nowrap"
+                className={`relative py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#c87a1d] hover:opacity-85 transition-opacity whitespace-nowrap after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-1 after:h-[2.5px] after:bg-[#c87a1d] after:transition-opacity after:duration-150 ${
+                  pathname === "/collections/limited-edition"
+                    ? "after:opacity-100"
+                    : "after:opacity-0"
+                }`}
               >
                 Limited Edition
               </Link>
@@ -176,14 +196,16 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               >
                 <button
                   type="button"
-                  className={`flex items-center gap-1.5 py-4 text-[15px] font-medium text-[#202020] hover:text-[#016c2f] transition-colors cursor-pointer ${
-                    activeDropdown === "gifts" ? "text-[#016c2f]" : ""
+                  className={`relative py-5 flex items-center gap-1.5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#202020] hover:text-[#016c2f] transition-colors cursor-pointer after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-1 after:h-[2.5px] after:bg-[#1A1A18] after:transition-opacity after:duration-150 ${
+                    activeDropdown === "gifts" || pathname?.startsWith("/collections/gifts")
+                      ? "after:opacity-100 text-[#016c2f]"
+                      : "after:opacity-0"
                   }`}
                 >
                   <span>Gifts</span>
                   <ChevronDown
-                    size={13}
-                    strokeWidth={2}
+                    size={12}
+                    strokeWidth={2.2}
                     className={`transition-transform duration-200 ${
                       activeDropdown === "gifts" ? "rotate-180 text-[#016c2f]" : "text-[#747576]"
                     }`}
@@ -192,8 +214,8 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
 
                 {/* Gifts Dropdown Content */}
                 {activeDropdown === "gifts" && (
-                  <div className="absolute top-[calc(100%-8px)] left-0 min-w-[240px] bg-white border border-[#e7e2d8] rounded-lg shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
-                    <ul className="flex flex-col text-[14px] text-[#1f3a2c]">
+                  <div className="absolute top-[calc(100%-4px)] left-0 min-w-[250px] bg-white border border-[#e7e2d8] rounded-lg shadow-xl py-2.5 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                    <ul className="flex flex-col text-[15px] text-[#1f3a2c]">
                       <li>
                         <Link
                           href="/collections/gifts"
@@ -234,7 +256,11 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               {/* Why Teabox */}
               <Link
                 href="/pages/why-teabox"
-                className="text-[15px] font-medium text-[#202020] hover:text-[#016c2f] transition-colors whitespace-nowrap"
+                className={`relative py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#202020] hover:text-[#016c2f] transition-colors whitespace-nowrap after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-1 after:h-[2.5px] after:bg-[#1A1A18] after:transition-opacity after:duration-150 ${
+                  pathname === "/pages/why-teabox"
+                    ? "after:opacity-100 text-[#016c2f]"
+                    : "after:opacity-0"
+                }`}
               >
                 Why Teabox
               </Link>
@@ -243,13 +269,13 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
 
           {/* Right Group: Action Icons & Search */}
           <div className="flex items-center gap-2.5 sm:gap-4 ml-auto">
-            {/* Desktop Search Bar (Exact Live Teabox Style) */}
+            {/* Desktop Search Bar (Exact Live Teabox Style: 170x44px, 1.5px border, 8px radius, 16px text) */}
             <button
               type="button"
               onClick={openSearch}
-              className="hidden md:flex items-center gap-2.5 px-3.5 py-1.5 w-[190px] xl:w-[220px] h-[38px] text-[13px] xl:text-[14px] text-[#747576] bg-[#f7f6f3] hover:bg-[#eae8e1] border border-[#dcd6cb] rounded-md transition-colors text-left group cursor-pointer"
+              className="hidden md:flex items-center gap-2.5 px-3.5 w-[170px] xl:w-[190px] h-[44px] text-[15px] xl:text-[16px] text-[#7a7468] bg-white hover:border-[#1f3a2c] border-[1.5px] border-[#5c5a52] rounded-[8px] transition-colors text-left group cursor-pointer"
             >
-              <Search size={16} className="text-[#666] group-hover:text-[#202020] transition-colors shrink-0" />
+              <Search size={18} strokeWidth={1.8} className="text-[#202020] group-hover:text-[#016c2f] transition-colors shrink-0" />
               <span className="truncate">Search teas...</span>
             </button>
 
