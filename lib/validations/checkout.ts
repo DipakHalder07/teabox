@@ -80,7 +80,7 @@ export const utrVerificationSchema = z.object({
 export type UtrVerificationData = z.infer<typeof utrVerificationSchema>;
 
 export const orderCreationSchema = z.object({
-  orderNumber: z.string().min(1),
+  orderNumber: z.string().regex(/^[A-Z]{2,3}-[A-Z0-9-]{4,30}$/, "Invalid order number"),
   customerName: z.string().min(2),
   customerPhone: z.string().min(10),
   customerEmail: z.string().email().nullable().optional(),
@@ -115,3 +115,20 @@ export const orderCreationSchema = z.object({
 });
 
 export type OrderCreationData = z.infer<typeof orderCreationSchema>;
+
+// UPI checkout (TeaPay): the server prices the order, so totals are not accepted from the browser.
+export const paymentStartSchema = orderCreationSchema.pick({
+  customerName: true,
+  customerPhone: true,
+  customerEmail: true,
+  address: true,
+  city: true,
+  state: true,
+  pincode: true,
+  landmark: true,
+  couponCode: true,
+  notes: true,
+  items: true,
+});
+
+export type PaymentStartData = z.infer<typeof paymentStartSchema>;

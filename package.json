@@ -3,14 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev-all.mjs",
+    "dev:web": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:local": "pglite-server --db=.pglite --port=5433 --max-connections=5",
+    "whatsapp": "npm --prefix whatsapp-service start",
+    "whatsapp:install": "npm --prefix whatsapp-service install",
+    "dev:all": "node scripts/dev-all.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -36,6 +41,8 @@
     "zustand": "^5.0.16"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
+    "@electric-sql/pglite-socket": "^0.2.14",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.2",

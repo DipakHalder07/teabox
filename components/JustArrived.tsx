@@ -111,12 +111,12 @@ export default function JustArrived() {
             return (
               <div
                 key={product.id}
-                className="min-w-[190px] max-w-[75vw] sm:min-w-[240px] lg:min-w-0 flex-none lg:flex-initial group bg-white border border-[#e7e2d8] rounded-[10px] lg:rounded-[12px] overflow-hidden flex flex-col justify-between"
+                className="min-w-[190px] max-w-[75vw] sm:min-w-[240px] lg:min-w-0 flex-none lg:flex-initial group bg-white border border-[#e7e2d8] rounded-[12px] overflow-hidden flex flex-col justify-between"
               >
                 {/* Product Media with Secondary Image Hover Transition + Link */}
                 <Link
                   href={productHref}
-                  className="block relative aspect-square w-full bg-[#fafafa] overflow-hidden cursor-pointer"
+                  className="block relative aspect-square w-full bg-[#fafafa] overflow-hidden cursor-pointer rounded-t-[12px]"
                 >
                   <Image
                     src={product.primaryImage}
@@ -136,64 +136,65 @@ export default function JustArrived() {
                   />
                 </Link>
 
-                {/* Product Info */}
-                <div className="p-3 sm:p-4 lg:p-5 flex flex-col justify-between flex-1 gap-3 sm:gap-4">
-                  <div className="flex flex-col gap-1">
-                    <Link
-                      href={productHref}
-                      className="hover:text-[#016c2f] transition-colors cursor-pointer"
-                    >
-                      <h3 className="text-[15px] sm:text-[16px] lg:text-[17px] font-bold text-[#202020] leading-snug truncate">
-                        {product.title}
-                      </h3>
-                    </Link>
+                {/* Product Info: Exact Live Teabox tb-product-card__info */}
+                <div className="p-3.5 sm:p-4 flex flex-col justify-between flex-1 gap-3 tb-product-card__info">
+                  <div className="flex flex-col">
+                    <div className="flex flex-col gap-[2px] w-full">
+                      <span className="product-card__title block">
+                        <Link
+                          href={productHref}
+                          className="font-bold text-[16px] sm:text-[17px] text-[#202020] hover:text-[#016c2f] transition-colors leading-[1.35] line-clamp-2 block"
+                        >
+                          {product.title}
+                        </Link>
+                      </span>
+                      <p className="product-card__pointers text-[13.5px] sm:text-[14px] text-[#5c5a52] hover:text-[#202020] line-clamp-1 leading-normal m-0 block font-normal">
+                        {product.pointers}
+                      </p>
+                    </div>
 
-                    {product.rating ? (
-                      <div className="flex items-center gap-1 text-[12px] text-[#202020]">
-                        <div className="flex text-[#e8770f]">
+                    {/* Star Reviews matching live site */}
+                    {product.reviewCount ? (
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <div className="flex items-center text-[#e5a524]">
                           {[...Array(5)].map((_, i) => (
                             <Star
                               key={i}
-                              size={12}
-                              className="fill-[#e8770f] text-[#e8770f]"
+                              size={13.5}
+                              className="fill-[#e5a524] text-[#e5a524]"
                             />
                           ))}
                         </div>
-                        <span className="font-semibold">{product.rating}</span>
-                        <span className="text-[#5c5a52]">({product.reviewCount})</span>
+                        <span className="text-[12.5px] sm:text-[13px] text-[#5c5a52] font-medium">
+                          ({product.reviewCount})
+                        </span>
                       </div>
                     ) : null}
-
-                    <p className="text-[12px] sm:text-[13px] text-[#5c5a52] leading-tight line-clamp-1">
-                      {product.pointers}
-                    </p>
                   </div>
 
                   {/* Add to Cart Button & More Sizes */}
-                  <div className="flex flex-col gap-2 pt-2 border-t border-[#f0ece4]">
+                  <div className="pt-2 flex flex-col">
                     <button
                       type="button"
                       onClick={(e) => handleAddProduct(e, product)}
                       disabled={loadingId === product.id}
-                      className="w-full bg-[#02cb5a] hover:bg-[#01b850] text-[#1f3a2c] font-bold text-[13px] sm:text-[14px] py-2.5 sm:py-3 px-2 rounded-[6px] tracking-wider uppercase transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-none active:brightness-95"
+                      className="w-full bg-[#02cb5a] hover:bg-[#02b851] text-[#1f3a2c] font-bold text-[13px] sm:text-[14px] h-[42px] py-2 px-3 rounded-[6px] tracking-[0.3px] uppercase transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-none active:brightness-95"
                     >
                       {loadingId === product.id ? (
                         <span className="inline-block w-4 h-4 border-2 border-[#1f3a2c] border-t-transparent rounded-full animate-spin" />
                       ) : (
                         <span>
-                          Add {product.weight} — ₹{product.price}
+                          ADD {product.weight} — ₹{product.price}
                         </span>
                       )}
                     </button>
 
-                    <div className="text-center">
-                      <Link
-                        href={productHref}
-                        className="text-[12px] sm:text-[13px] text-[#5c5a52] hover:text-[#016c2f] font-medium transition-colors cursor-pointer inline-block"
-                      >
-                        More Sizes ➝
-                      </Link>
-                    </div>
+                    <Link
+                      href={productHref}
+                      className="more-sizes-btn text-[13px] sm:text-[13.5px] font-medium text-[#1f3a2c] hover:text-[#016c2f] text-center transition-colors underline decoration-[#02cb5a] underline-offset-4 mt-[7px] block"
+                    >
+                      More Sizes ➝
+                    </Link>
                   </div>
                 </div>
               </div>

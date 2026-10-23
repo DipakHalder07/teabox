@@ -196,7 +196,7 @@ function TrackOrderContent() {
                       placeholder={
                         queryType === "phone"
                           ? "10-digit mobile number"
-                          : "Enter Order Number (e.g. TBX-2026-98125 or CP-IND-...)"
+                          : "Enter Order Number (e.g. TB-4821937065)"
                       }
                       className="flex-1 px-3 py-3 text-[14px] text-[#202020] bg-transparent outline-none placeholder:text-[#9da3a0]"
                     />
@@ -221,45 +221,6 @@ function TrackOrderContent() {
                   </button>
                 </form>
 
-                {/* Sample quick tags */}
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-[#5c5a52]">
-                  <span>Try sample:</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setQueryType("order");
-                      setSearchValue("TBX-2026-98125");
-                      performSearch("TBX-2026-98125");
-                    }}
-                    className="underline text-[#1f3a2c] font-semibold hover:text-[#016c2f] cursor-pointer"
-                  >
-                    TBX-2026-98125
-                  </button>
-                  <span>•</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setQueryType("order");
-                      setSearchValue("CP-IND-8849201");
-                      performSearch("CP-IND-8849201");
-                    }}
-                    className="underline text-[#1f3a2c] font-semibold hover:text-[#016c2f] cursor-pointer"
-                  >
-                    CP-IND-8849201
-                  </button>
-                  <span>•</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setQueryType("phone");
-                      setSearchValue("9876543210");
-                      performSearch("9876543210");
-                    }}
-                    className="underline text-[#1f3a2c] font-semibold hover:text-[#016c2f] cursor-pointer"
-                  >
-                    9876543210
-                  </button>
-                </div>
 
                 {/* Recent orders saved in session */}
                 {recentOrderIds.length > 0 && (
@@ -299,7 +260,7 @@ function TrackOrderContent() {
               <div>
                 <p className="font-bold">{errorMessage}</p>
                 <p className="text-[12.5px] text-red-600 mt-0.5">
-                  Check if your Order ID starts with <strong>TBX-</strong> or your 10-digit mobile number is correct.
+                  Check if your Order ID starts with <strong>TB-</strong> or your 10-digit mobile number is correct.
                 </p>
               </div>
             </motion.div>

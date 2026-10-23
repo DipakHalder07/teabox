@@ -1,0 +1,18 @@
+# Render Blueprint for the WhatsApp service (free plan). Render → New → Blueprint → this repo.
+# The free plan wipes the disk on every restart, so the WhatsApp login is kept in the shop's
+# database (WHATSAPP_SESSION_DB_URL), and the service pings itself so it does not fall asleep.
+services:
+  - type: web
+    name: teabox-whatsapp
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerContext: ./whatsapp-service
+    dockerfilePath: ./whatsapp-service/Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: WHATSAPP_SERVICE_TOKEN
+        generateValue: true
+      - key: WHATSAPP_SESSION_DB_URL
+        sync: false

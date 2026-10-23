@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllOrders } from "@/lib/ordersDb";
 import { verifyAdminRequest } from "@/lib/auth";
+import { getUpiConfig } from "@/lib/gateway/config";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,6 +11,7 @@ export async function GET(req: NextRequest) {
     }
 
     const orders = await getAllOrders();
+    const { upiId: merchantVpa } = getUpiConfig();
     const payments = orders.map((o) => ({
       id: `TXN-${o.orderNumber.replace("TBX-", "")}`,
       orderId: o.id,
@@ -17,9 +19,9 @@ export async function GET(req: NextRequest) {
       customerName: o.customerName,
       customerPhone: o.customerPhone,
       amount: o.totalAmount,
-      gateway: o.paymentMethod === "upi" ? "YouPI-PG (Direct UPI)" : "Cash on Delivery",
+      gateway: o.paymentMethod === "upi" ? "TeaPay (Direct UPI)" : "Cash on Delivery",
       method: o.paymentMethod,
-      vpa: o.paymentMethod === "upi" ? "8617513004@ptaxis" : null,
+      vpa: o.paymentMethod === "upi" ? merchantVpa || null : null,
       utr: o.utrNumber || null,
       status: o.paymentStatus,
       createdAt: o.createdAt,
@@ -28,6 +30,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       status: "success",
       count: payments.length,
+      merchantVpa: merchantVpa || null,
       payments,
     });
   } catch (error: any) {

@@ -13,6 +13,7 @@ import {
   Copy,
   Check,
 } from "lucide-react";
+import { istDateTime } from "@/lib/istTime";
 
 interface PaymentLogItem {
   id: string;
@@ -34,6 +35,7 @@ export default function AdminPaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [copiedVpa, setCopiedVpa] = useState(false);
+  const [merchantVpa, setMerchantVpa] = useState("");
 
   const fetchPayments = async () => {
     setLoading(true);
@@ -43,6 +45,7 @@ export default function AdminPaymentsPage() {
       if (data?.payments) {
         setPayments(data.payments);
       }
+      if (data?.merchantVpa) setMerchantVpa(data.merchantVpa);
     } catch (err) {
       console.error("Failed to load payments:", err);
     } finally {
@@ -55,10 +58,11 @@ export default function AdminPaymentsPage() {
   }, []);
 
   const handleCopyVpa = () => {
-    navigator.clipboard.writeText("8617513004@ptaxis");
+    if (!merchantVpa) return;
+    navigator.clipboard.writeText(merchantVpa);
     setCopiedVpa(true);
     toast.success("Merchant UPI ID copied", {
-      description: "8617513004@ptaxis",
+      description: merchantVpa,
     });
     setTimeout(() => setCopiedVpa(false), 2000);
   };
@@ -80,7 +84,7 @@ export default function AdminPaymentsPage() {
             UPI &amp; Payment Transactions
           </h1>
           <p className="text-[13.5px] text-[#5c5a52]">
-            Audit logs for direct-to-bank YouPI-PG transfers and Cash on Delivery orders.
+            Audit logs for direct-to-bank UPI transfers (TeaPay) and Cash on Delivery orders.
           </p>
         </div>
 
@@ -101,7 +105,7 @@ export default function AdminPaymentsPage() {
           </span>
           <div className="flex items-center justify-between">
             <span className="font-mono font-bold text-[15px] text-[#1f3a2c]">
-              8617513004@ptaxis
+              {merchantVpa || "Not configured (set UPI_ID)"}
             </span>
             <button
               onClick={handleCopyVpa}
@@ -117,7 +121,7 @@ export default function AdminPaymentsPage() {
             Gateway Engine
           </span>
           <div className="flex items-center gap-2">
-            <span className="font-bold text-[15px] text-[#202020]">YouPI-PG Native</span>
+            <span className="font-bold text-[15px] text-[#202020]">TeaPay (built in)</span>
             <span className="bg-[#02cb5a]/20 text-[#016c2f] text-[10px] font-bold px-2 py-0.5 rounded">
               Active
             </span>
@@ -217,10 +221,7 @@ export default function AdminPaymentsPage() {
                     </span>
                   </td>
                   <td className="py-3 px-4 text-right text-[12px] text-[#747576] whitespace-nowrap">
-                    {new Date(p.createdAt).toLocaleTimeString("en-IN", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {istDateTime(p.createdAt)}
                   </td>
                 </tr>
               ))}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateOrderStatus } from "@/lib/ordersDb";
+import { updateOrderStatus, deleteOrder } from "@/lib/ordersDb";
 import { verifyAdminRequest } from "@/lib/auth";
 
 export async function PATCH(
@@ -35,6 +35,36 @@ export async function PATCH(
     console.error("Error updating order:", error);
     return NextResponse.json(
       { error: error?.message || "Failed to update order" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const admin = await verifyAdminRequest(req);
+    if (!admin) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const deleted = await deleteOrder(id);
+
+    if (!deleted) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      status: "success",
+      message: `Order ${id} deleted successfully`,
+    });
+  } catch (error: any) {
+    console.error("Error deleting order:", error);
+    return NextResponse.json(
+      { error: error?.message || "Failed to delete order" },
       { status: 500 }
     );
   }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchOrders, getOrderById } from "@/lib/ordersDb";
-import { cleanIndianPhone } from "@/lib/validations/checkout";
+import { toPublicOrder } from "@/lib/publicOrder";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
       "";
 
     const trimmed = query.trim();
-    if (!trimmed) {
+    if (!trimmed || trimmed.length > 64) {
       return NextResponse.json(
         { error: "Please provide an Order ID, Courier Tracking Number, or Registered Mobile Number." },
         { status: 400 }
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     if (single) {
       return NextResponse.json({
         status: "success",
-        orders: [single],
+        orders: [toPublicOrder(single)],
       });
     }
 
@@ -34,22 +34,22 @@ export async function GET(req: NextRequest) {
     const results = await searchOrders(trimmed);
     if (!results || results.length === 0) {
       return NextResponse.json(
-        { error: `No active order found matching "${trimmed}". Please check your details.` },
+        { error: "No order found. Please check your Order ID, tracking number or 10-digit mobile number." },
         { status: 404 }
       );
     }
 
     return NextResponse.json({
       status: "success",
-      orders: results,
+      orders: results.map(toPublicOrder),
     });
-  } catch (error: any) {
-    if (error?.digest === "NEXT_PRERENDER_INTERRUPTED") {
+  } catch (error) {
+    if ((error as { digest?: string })?.digest === "NEXT_PRERENDER_INTERRUPTED") {
       throw error;
     }
     console.error("Tracking API error:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to search order tracking info" },
+      { error: "Failed to search order tracking info" },
       { status: 500 }
     );
   }

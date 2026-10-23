@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { toast } from "sonner";
 import { broadcastCartChange } from "./cartSync";
 
 export interface CartItem {
@@ -157,14 +156,6 @@ export const useCartStore = create<CartStoreState>()(
 
         // Broadcast to other tabs
         broadcastCartChange(newItems);
-
-        toast.success("Added to Bag", {
-          description: `${item.title}${normalizedWeight ? ` (${normalizedWeight})` : ""}`,
-          action: {
-            label: "View Cart",
-            onClick: () => get().openCart(),
-          },
-        });
       },
 
       /**
@@ -181,12 +172,6 @@ export const useCartStore = create<CartStoreState>()(
 
         // Broadcast to other tabs
         broadcastCartChange(newItems);
-
-        if (itemToRemove) {
-          toast.info("Removed from Bag", {
-            description: itemToRemove.title,
-          });
-        }
       },
 
       /**

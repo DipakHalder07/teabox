@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { Toaster } from "sonner";
+import LivePaymentsWatcher from "@/components/admin/LivePaymentsWatcher";
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -15,6 +17,8 @@ import {
   X,
   Database,
   RefreshCw,
+  Radio,
+  Lock,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -34,23 +38,36 @@ export default function AdminLayout({
   const [loading, setLoading] = useState(!isLoginPage);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Check auth session
+  // Check auth session on load, every 5 minutes, and when the tab is shown again,
+  // so an expired or revoked session leaves the admin straight away.
   useEffect(() => {
     if (isLoginPage) return;
 
-    fetch("/api/admin/auth/me")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.authenticated && data?.admin) {
-          setAdminUser(data.admin);
-          setLoading(false);
-        } else {
+    const check = () =>
+      fetch("/api/admin/auth/me", { cache: "no-store" })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.authenticated && data?.admin) {
+            setAdminUser(data.admin);
+            setLoading(false);
+          } else {
+            router.push("/admin/login");
+          }
+        })
+        .catch(() => {
           router.push("/admin/login");
-        }
-      })
-      .catch(() => {
-        router.push("/admin/login");
-      });
+        });
+
+    check();
+    const timer = setInterval(check, 5 * 60 * 1000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [isLoginPage, router]);
 
   const handleLogout = async () => {
@@ -65,7 +82,12 @@ export default function AdminLayout({
 
   // If on login page, render full screen without sidebar
   if (isLoginPage) {
-    return <>{children}</>;
+    return (
+      <>
+        {children}
+        <Toaster position="top-right" richColors closeButton />
+      </>
+    );
   }
 
   const navItems = [
@@ -93,14 +115,26 @@ export default function AdminLayout({
       icon: CreditCard,
       active: pathname.startsWith("/admin/payments"),
     },
+    {
+      label: "Payment Gateway",
+      href: "/admin/payment-gateway",
+      icon: Radio,
+      active: pathname.startsWith("/admin/payment-gateway"),
+    },
+    {
+      label: "Security",
+      href: "/admin/security",
+      icon: Lock,
+      active: pathname.startsWith("/admin/security"),
+    },
   ];
 
   return (
     <div className="min-h-screen bg-[#f7f6f2] flex flex-col md:flex-row text-[#202020]">
       {/* Mobile Header */}
-      <header className="md:hidden bg-[#1f3a2c] text-white px-4 py-3 flex items-center justify-between border-b border-[#2e5440]">
+      <header className="md:hidden sticky top-0 z-50 bg-[#1f3a2c] text-white px-4 py-3 flex items-center justify-between border-b border-[#2e5440]">
         <div className="flex items-center gap-2">
-          <span className="font-stencil text-[18px] tracking-wider text-white">TEABOX</span>
+          <span className="font-stencil text-[18px] tracking-wider text-white">DEMOBOX</span>
           <span className="bg-[#02cb5a] text-[#1f3a2c] text-[9px] font-bold px-1.5 py-0.5 rounded">
             ADMIN
           </span>
@@ -113,16 +147,16 @@ export default function AdminLayout({
         </button>
       </header>
 
-      {/* Sidebar Navigation */}
+      {/* Sidebar Navigation: stays in place while the page scrolls (desktop) */}
       <aside
         className={`${
-          mobileMenuOpen ? "block" : "hidden"
-        } md:block md:w-64 bg-[#1f3a2c] text-white flex flex-col shrink-0 border-r border-[#2e5440] min-h-[calc(100vh-53px)] md:min-h-screen sticky top-0 z-40`}
+          mobileMenuOpen ? "flex" : "hidden"
+        } md:flex md:w-64 bg-[#1f3a2c] text-white flex-col shrink-0 border-r border-[#2e5440] min-h-[calc(100vh-53px)] md:min-h-0 md:h-screen md:sticky md:top-0 md:self-start md:overflow-y-auto z-40`}
       >
         {/* Brand Logo & DB Badge */}
         <div className="p-5 border-b border-[#2e5440] hidden md:block">
           <Link href="/admin" className="flex items-center gap-2.5">
-            <span className="font-stencil text-[22px] tracking-wider text-white">TEABOX</span>
+            <span className="font-stencil text-[22px] tracking-wider text-white">DEMOBOX</span>
             <span className="bg-[#02cb5a] text-[#1f3a2c] text-[10px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider">
               ADMIN
             </span>
@@ -177,7 +211,7 @@ export default function AdminLayout({
                 {adminUser?.name || "Admin"}
               </span>
               <span className="text-[11px] text-[#02cb5a] block truncate">
-                {adminUser?.email || "admin@teabox.com"}
+                {adminUser?.email || ""}
               </span>
             </div>
             <button
@@ -196,11 +230,14 @@ export default function AdminLayout({
         {loading && (
           <div className="absolute inset-0 z-50 bg-[#0e1d15] flex flex-col items-center justify-center text-white min-h-[400px]">
             <RefreshCw size={32} className="animate-spin text-[#02cb5a] mb-3" />
-            <p className="text-[14px] text-white/70">Verifying Teabox Admin Session...</p>
+            <p className="text-[14px] text-white/70">Verifying Demobox Admin Session...</p>
           </div>
         )}
         {children}
       </main>
+      {/* Live UPI payments + alerts, on every admin page */}
+      {!loading && adminUser && <LivePaymentsWatcher />}
+      <Toaster position="top-right" richColors closeButton />
     </div>
   );
 }

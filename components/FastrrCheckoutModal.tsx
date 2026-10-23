@@ -8,7 +8,6 @@ import {
   Check,
   ShieldCheck,
   Truck,
-  QrCode,
   Smartphone,
   Banknote,
   ArrowRight,
@@ -22,30 +21,26 @@ import {
 } from "lucide-react";
 import { useCart } from "./context/CartContext";
 import { cleanIndianPhone } from "@/lib/validations/checkout";
+import TeaPayPanel, { cancelTeaPaySession, PaymentLeaveDialog, TeaPaySessionView } from "./TeaPayPanel";
+import { newOrderNumber } from "@/lib/orderNumber";
+import { useCodAvailable } from "@/lib/useCodAvailable";
 
 interface FastrrCheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-interface YouPiSessionData {
-  paymentId: string;
-  orderId: string;
-  amount: number;
-  currency: string;
-  vpa: string;
-  merchantName: string;
-  upiUri: string;
-  qrCodeDataUrl: string;
-  deepLinks: {
-    gpay: string;
-    phonepe: string;
-    paytm: string;
-    cred: string;
-    generic: string;
-  };
-  expiresAt: string;
+// "native": the shop's own UPI gateway (TeaPay). "manual": shop QR + typed UTR (used without a database).
+interface UpiSessionData extends Partial<Omit<TeaPaySessionView, "status">> {
+  mode: "native" | "manual";
   status: string;
+  paymentId?: string;
+  orderId?: string;
+  amount?: number;
+  currency?: string;
+  vpa?: string;
+  merchantName?: string;
+  expiresAt?: string;
 }
 
 export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutModalProps) {
@@ -66,19 +61,26 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number } | null>(null);
   const [couponError, setCouponError] = useState("");
 
-  // Payment method (UPI via YouPI-PG or Cash on Delivery)
+  // Payment method (UPI via TeaPay or Cash on Delivery)
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "cod">("upi");
+  const [codAvailable, setCodAvailable] = useCodAvailable();
   const [upiApp, setUpiApp] = useState<"qr" | "gpay" | "phonepe" | "paytm" | "cred">("qr");
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderId, setOrderId] = useState("");
 
-  // YouPI-PG Gateway State
-  const [youPiSession, setYouPiSession] = useState<YouPiSessionData | null>(null);
-  const [isCreatingYouPi, setIsCreatingYouPi] = useState(false);
-  const [youPiUtr, setYouPiUtr] = useState("");
+  // UPI payment state
+  const [upiSession, setUpiSession] = useState<UpiSessionData | null>(null);
+  const [isCreatingUpi, setIsCreatingUpi] = useState(false);
+  const [upiUtr, setUpiUtr] = useState("");
   const [confirmedUtr, setConfirmedUtr] = useState("");
   const [utrError, setUtrError] = useState("");
   const [isVerifyingUtr, setIsVerifyingUtr] = useState(false);
+  // paymentConfirmed: the bank credit was matched (the order was created on the server). utrSubmitted: manual-UPI UTR, unverified.
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const [utrSubmitted, setUtrSubmitted] = useState(false);
+  const persistOrderRef = useRef<(utr: string | null) => Promise<string | null>>(async () => null);
+  // Leaving while the UPI payment is open asks first (PaymentLeaveDialog).
+  const [leaveAction, setLeaveAction] = useState<null | (() => void)>(null);
   const [copiedVpa, setCopiedVpa] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState(600); // 10 minutes
 
@@ -148,10 +150,61 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   const codFee = paymentMethod === "cod" ? 40 : 0;
   const finalTotal = Math.max(0, subtotal - discountAmount + shippingFee + codFee);
 
-  // Initialize YouPI Payment Session
-  const initYouPiSession = async (currentOrderId: string, amountToPay: number) => {
-    setIsCreatingYouPi(true);
+  // If previous order was completed (step === 3) but user now has items in their cart,
+  // ensure we display the active checkout flow (step 1) rather than the old confirmation.
+  const isConfirmation = step === 3 && cartItems.length === 0;
+  const effectiveStep = isConfirmation ? 3 : step === 3 ? 1 : step;
+
+  const [confirmedTotal, setConfirmedTotal] = useState<number | null>(null);
+  const latestTotalRef = useRef(finalTotal);
+  useEffect(() => {
+    if (finalTotal > 0 && cartItems.length > 0) {
+      latestTotalRef.current = finalTotal;
+    }
+  }, [finalTotal, cartItems.length]);
+
+  // Starts the UPI step: the shop's own gateway first, manual UPI if it is unavailable.
+  const initUpiSession = async (currentOrderId: string, amountToPay: number) => {
+    setIsCreatingUpi(true);
     try {
+      const startRes = await fetch("/api/pay/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerName: fullName,
+          customerPhone: phone,
+          customerEmail: null,
+          address,
+          city,
+          state,
+          pincode,
+          landmark: landmark || null,
+          couponCode: appliedCoupon?.code || null,
+          items: cartItems.map((item) => ({
+            productId: item.id,
+            title: item.title,
+            weight: item.weight,
+            price: item.price,
+            quantity: item.quantity,
+            image: item.image,
+          })),
+        }),
+      });
+      const started = await startRes.json().catch(() => ({}));
+      if (startRes.ok) {
+        setUpiSession({ mode: "native", ...started });
+        setOrderId(started.orderNumber);
+        if (typeof started.orderTotal === "number") {
+          setConfirmedTotal(started.orderTotal);
+        }
+        return;
+      }
+      if (started?.fallback !== "manual") {
+        alert(started?.error || "Could not start UPI payment. Please try again or choose Cash on Delivery.");
+        return;
+      }
+
+      // Manual UPI fallback (no database)
       const res = await fetch("/api/payments/youpi/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -167,13 +220,13 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
       });
       const data = await res.json();
       if (data?.data) {
-        setYouPiSession(data.data);
+        setUpiSession(data.data);
         setCountdownSeconds(600);
       }
     } catch (err) {
-      console.error("Failed to initialize YouPI session:", err);
+      console.error("Failed to start UPI payment:", err);
     } finally {
-      setIsCreatingYouPi(false);
+      setIsCreatingUpi(false);
     }
   };
 
@@ -187,34 +240,41 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
       alert("Please complete the required delivery address fields");
       return;
     }
-    const generatedId = orderId || `TB-${Math.floor(100000 + Math.random() * 900000)}`;
+    const generatedId = orderId || newOrderNumber();
     setOrderId(generatedId);
     setStep(2);
-    initYouPiSession(generatedId, finalTotal);
+    initUpiSession(generatedId, finalTotal);
   };
 
-  // Poll for YouPI payment confirmation from observer
+  // Manual UPI: poll payment status
   useEffect(() => {
     if (!isOpen || step !== 2 || paymentMethod !== "upi" || !orderId) return;
+    if (upiSession?.mode === "native") return; // TeaPayPanel watches the payment itself
 
+    let done = false;
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/payments/youpi/verify?orderId=${encodeURIComponent(orderId)}`);
         const data = await res.json();
-        if (data?.status === "COMPLETED") {
+        if (data?.status === "COMPLETED" && !done) {
+          done = true;
+          clearInterval(interval);
           if (data?.utr) setConfirmedUtr(data.utr);
+          setPaymentConfirmed(true);
+          const currentTotal = latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal;
+          setConfirmedTotal(currentTotal);
+          await persistOrderRef.current(data?.utr || null);
           setIsProcessing(false);
           setStep(3);
           clearCart();
-          clearInterval(interval);
         }
       } catch {}
     }, 3500);
 
     return () => clearInterval(interval);
-  }, [isOpen, step, paymentMethod, orderId, clearCart]);
+  }, [isOpen, step, paymentMethod, orderId, clearCart, upiSession?.mode]);
 
-  // Countdown timer for YouPI dynamic QR
+  // Countdown timer for the manual-UPI QR
   useEffect(() => {
     if (!isOpen || step !== 2 || paymentMethod !== "upi") return;
     if (countdownSeconds <= 0) return;
@@ -233,7 +293,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   const handleVerifyUtr = async (e: React.FormEvent) => {
     e.preventDefault();
     setUtrError("");
-    const clean = youPiUtr.trim().replace(/\D/g, "");
+    const clean = upiUtr.trim().replace(/\D/g, "");
     if (clean.length < 12) {
       setUtrError("Please enter a valid 12-digit UPI UTR / Ref Number from your payment app receipt.");
       return;
@@ -249,9 +309,8 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
       const data = await res.json();
       if (data?.success) {
         setConfirmedUtr(clean);
+        setUtrSubmitted(true);
         setIsVerifyingUtr(false);
-        setStep(3);
-        clearCart();
       } else {
         setUtrError(data?.error || "Verification failed. Please check the 12-digit UTR.");
         setIsVerifyingUtr(false);
@@ -267,12 +326,15 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   const resetCheckout = () => {
     setStep(1);
     setOrderId("");
-    setYouPiSession(null);
-    setYouPiUtr("");
+    setUpiSession(null);
+    setUpiUtr("");
     setConfirmedUtr("");
     setUtrError("");
+    setPaymentConfirmed(false);
+    setUtrSubmitted(false);
     setIsProcessing(false);
     setPaymentMethod("upi");
+    setConfirmedTotal(null);
   };
 
   // Reset state whenever modal opens if previous checkout was completed
@@ -282,37 +344,36 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
     }
   }, [isOpen]);
 
-  const handleClose = () => {
+  // Reset state whenever new items are added to cart after a completed order
+  useEffect(() => {
+    if (cartItems.length > 0 && step === 3) {
+      resetCheckout();
+    }
+  }, [cartItems.length, step]);
+
+  const closeNow = () => {
     if (step === 3) {
       resetCheckout();
     }
     onClose();
   };
+  // Leaving mid-payment starts the checkout over next time.
+  const leaveCheckout = () => {
+    if (paymentInProgress) resetCheckout();
+    closeNow();
+  };
+  const handleClose = () => guardLeave(leaveCheckout);
 
   // Auto scroll to top on step transition
   useEffect(() => {
     modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [step]);
 
-  const handlePlaceOrder = async () => {
-    setIsProcessing(true);
-    const assignedUtr =
-      confirmedUtr ||
-      youPiUtr.trim() ||
-      `4287${Math.floor(10000000 + Math.random() * 90000000)}`;
-    setConfirmedUtr(assignedUtr);
-
+  // Saves the order. The server decides the payment status; the browser only reports the UTR it knows.
+  // Returns an error message when the order was not saved.
+  const persistOrder = async (utr: string | null): Promise<string | null> => {
     try {
-      if (paymentMethod === "upi" && orderId) {
-        await fetch("/api/payments/youpi/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderId, utr: assignedUtr }),
-        });
-      }
-
-      // Persist order directly into PostgreSQL / Admin database
-      await fetch("/api/admin/orders", {
+      const res = await fetch("/api/admin/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -332,9 +393,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
           codFee,
           totalAmount: finalTotal,
           paymentMethod,
-          paymentStatus: paymentMethod === "upi" ? "PAID" : "PENDING",
-          orderStatus: "PROCESSING",
-          utrNumber: paymentMethod === "upi" ? assignedUtr : null,
+          utrNumber: paymentMethod === "upi" ? utr : null,
           items: cartItems.map((item) => ({
             productId: item.id,
             title: item.title,
@@ -345,8 +404,79 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
           })),
         }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return data?.error || "Could not place the order. Please try again.";
+      }
+      return null;
     } catch (e) {
       console.warn("Order persistence log:", e);
+      return "Network error. Please check your connection and try again.";
+    }
+  };
+  useEffect(() => {
+    persistOrderRef.current = persistOrder;
+  });
+
+  // The bank credit was matched and the server created the order: show the confirmation.
+  const handleUpiPaid = (view: TeaPaySessionView) => {
+    setPaymentConfirmed(true);
+    if (view.utr) setConfirmedUtr(view.utr);
+    setOrderId(view.orderNumber);
+    const verifiedTotal = view.orderTotal || (latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal);
+    setConfirmedTotal(verifiedTotal);
+    setStep(3);
+    clearCart();
+  };
+
+  const paymentInProgress =
+    step === 2 && paymentMethod === "upi" && upiSession?.mode === "native" && !paymentConfirmed;
+  const guardLeave = (proceed: () => void) => {
+    if (paymentInProgress) setLeaveAction(() => proceed);
+    else proceed();
+  };
+
+  // Start over with a fresh payment (and order number).
+  const restartUpiSession = () => {
+    if (upiSession?.mode === "native" && upiSession.sessionId) cancelTeaPaySession(upiSession.sessionId);
+    const newOrderId = newOrderNumber();
+    setOrderId(newOrderId);
+    setUpiSession(null);
+    initUpiSession(newOrderId, finalTotal);
+  };
+
+  const handleSelectCod = () => {
+    if (upiSession?.mode === "native" && !paymentConfirmed) {
+      if (upiSession.sessionId) cancelTeaPaySession(upiSession.sessionId);
+      setUpiSession(null);
+      setOrderId(newOrderNumber());
+    }
+    setPaymentMethod("cod");
+  };
+
+  const handlePlaceOrder = async () => {
+    if (paymentMethod === "upi" && !paymentConfirmed && !utrSubmitted) {
+      const msg =
+        upiSession?.mode === "native"
+          ? "Please complete the UPI payment above. Your order is placed automatically once it is received."
+          : "Please pay using the QR / UPI app, then enter your 12-digit UTR to place the order.";
+      setUtrError(msg);
+      alert(msg);
+      return;
+    }
+
+    const currentTotal = latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal;
+    setConfirmedTotal(currentTotal);
+    setIsProcessing(true);
+    const error = await persistOrder(confirmedUtr || null);
+    if (error) {
+      setIsProcessing(false);
+      if (paymentMethod === "cod" && /cash on delivery/i.test(error)) {
+        setCodAvailable(false);
+        setPaymentMethod("upi");
+      }
+      alert(error);
+      return;
     }
 
     setTimeout(() => {
@@ -359,6 +489,20 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   if (!isOpen) return null;
 
   return (
+    <>
+    {leaveAction && upiSession?.sessionId && (
+      <PaymentLeaveDialog
+        sessionId={upiSession.sessionId}
+        payAmount={upiSession.payAmount || String(finalTotal)}
+        onStay={() => setLeaveAction(null)}
+        onLeave={() => {
+          const proceed = leaveAction;
+          setLeaveAction(null);
+          setUpiSession(null);
+          proceed();
+        }}
+      />
+    )}
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-200">
       {/* Backdrop */}
       <div
@@ -373,14 +517,9 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
         {/* Header with Fastrr / Shiprocket Branding */}
         <div className="bg-[#1f3a2c] text-white px-5 sm:px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <Image
-              src="/assets/teabox-logo.svg"
-              alt="Teabox"
-              width={100}
-              height={26}
-              style={{ width: "auto" }}
-              className="h-6 w-auto brightness-0 invert"
-            />
+            <span className="font-stencil text-[20px] sm:text-[22px] font-bold tracking-wider text-white">
+              DEMOBOX
+            </span>
             <span className="text-[11px] bg-[#02cb5a] text-[#1f3a2c] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
               Fastrr Checkout
             </span>
@@ -405,22 +544,22 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
         </div>
 
         {/* Stepper Progress Bar */}
-        {step !== 3 && (
+        {effectiveStep !== 3 && (
           <div className="bg-[#fafafa] border-b border-[#e7e2d8] px-5 sm:px-6 py-3 flex items-center justify-between text-[13px] font-semibold">
-            <div className={`flex items-center gap-2 ${step === 1 ? "text-[#016c2f]" : "text-[#202020]"}`}>
+            <div className={`flex items-center gap-2 ${effectiveStep === 1 ? "text-[#016c2f]" : "text-[#202020]"}`}>
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold ${
-                step === 1 ? "bg-[#02cb5a] text-[#1f3a2c]" : "bg-[#1f3a2c] text-white"
+                effectiveStep === 1 ? "bg-[#02cb5a] text-[#1f3a2c]" : "bg-[#1f3a2c] text-white"
               }`}>
-                {step > 1 ? "✓" : "1"}
+                {effectiveStep > 1 ? "✓" : "1"}
               </span>
               <span>1. Delivery Address</span>
             </div>
 
             <ChevronRight size={16} className="text-[#8e8d8a]" />
 
-            <div className={`flex items-center gap-2 ${step === 2 ? "text-[#016c2f]" : "text-[#747576]"}`}>
+            <div className={`flex items-center gap-2 ${effectiveStep === 2 ? "text-[#016c2f]" : "text-[#747576]"}`}>
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold ${
-                step === 2 ? "bg-[#02cb5a] text-[#1f3a2c]" : "bg-[#e7e2d8] text-[#747576]"
+                effectiveStep === 2 ? "bg-[#02cb5a] text-[#1f3a2c]" : "bg-[#e7e2d8] text-[#747576]"
               }`}>
                 2
               </span>
@@ -432,7 +571,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
         {/* Body Content */}
         <div ref={modalBodyRef} className="flex-1 overflow-y-auto p-5 sm:p-7">
           {/* ================= STEP 1: ADDRESS & CONTACT ================= */}
-          {step === 1 && (
+          {effectiveStep === 1 && (
             <form onSubmit={handleProceedToPayment} className="space-y-6">
               {/* Cart Items Mini Preview */}
               {cartItems.length > 0 && (
@@ -446,7 +585,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                       <div key={item.id} className="py-2 flex items-center justify-between gap-3 text-[13px]">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className="relative w-8 h-8 rounded bg-white border border-[#e7e2d8] shrink-0 overflow-hidden">
-                            <Image src={item.image} alt={item.title} fill sizes="32px" className="object-contain p-0.5" />
+                            <Image src={item.image} alt={item.title} fill sizes="32px" className="object-cover" />
                           </div>
                           <div className="min-w-0">
                             <span className="font-semibold text-[#202020] truncate block">{item.title}</span>
@@ -666,7 +805,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
           )}
 
           {/* ================= STEP 2: PAYMENT METHODS ================= */}
-          {step === 2 && (
+          {effectiveStep === 2 && (
             <div className="space-y-6">
               {/* Delivery Address Summary Bar */}
               <div className="bg-[#fafafa] border border-[#e7e2d8] rounded-xl p-3.5 flex items-center justify-between text-[13px]">
@@ -678,7 +817,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                 </div>
                 <button
                   type="button"
-                  onClick={() => setStep(1)}
+                  onClick={() => guardLeave(() => setStep(1))}
                   className="text-[#016c2f] font-bold underline hover:opacity-80"
                 >
                   Edit
@@ -691,12 +830,12 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                   Select Payment Method
                 </h4>
 
-                {/* 1. UPI Powered by YouPI-PG */}
+                {/* 1. UPI (TeaPay) */}
                 <div
                   onClick={() => {
                     setPaymentMethod("upi");
-                    if (!youPiSession && orderId) {
-                      initYouPiSession(orderId, finalTotal);
+                    if (!upiSession && orderId) {
+                      initUpiSession(orderId, finalTotal);
                     }
                   }}
                   className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
@@ -713,9 +852,12 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        <QrCode size={19} className="text-[#016c2f]" />
-                        <span className="font-bold text-[15px] text-[#202020]">
-                          UPI (Google Pay, PhonePe, Paytm &amp; QR)
+                        <Image src="/assets/upi/upi.svg" alt="UPI" width={44} height={16} className="h-4 w-auto" />
+                        <span className="font-bold text-[15px] text-[#202020]">Pay by UPI</span>
+                        <span className="hidden sm:flex items-center gap-1 ml-1">
+                          {["gpay", "phonepe", "paytm", "cred", "bhim"].map((app) => (
+                            <Image key={app} src={`/assets/upi/${app}.png`} alt="" width={20} height={20} className="rounded" />
+                          ))}
                         </span>
                       </div>
                     </div>
@@ -724,7 +866,19 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                     </span>
                   </div>
 
-                  {paymentMethod === "upi" && (
+                  {paymentMethod === "upi" && upiSession?.mode === "native" && (
+                    <div className="mt-4 pt-4 border-t border-[#e7e2d8]" onClick={(e) => e.stopPropagation()}>
+                      <TeaPayPanel
+                        key={upiSession.sessionId}
+                        session={upiSession as TeaPaySessionView}
+                        onPaid={handleUpiPaid}
+                        onRestart={restartUpiSession}
+                        onBackPressed={() => guardLeave(leaveCheckout)}
+                      />
+                    </div>
+                  )}
+
+                  {paymentMethod === "upi" && upiSession?.mode !== "native" && (
                     <div className="mt-4 pt-4 border-t border-[#e7e2d8] space-y-4" onClick={(e) => e.stopPropagation()}>
                       {/* UPI Info Sub-banner */}
                       <div className="bg-[#f0f8f4] border border-[#bfdcc9] rounded-lg p-3 text-[12.5px] text-[#1f3a2c] flex items-center justify-between">
@@ -742,14 +896,14 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                         {/* Dynamic QR Display */}
                         <div className="flex flex-col items-center text-center">
                           <div className="relative w-44 h-44 bg-white p-2 rounded-xl border border-[#e7e2d8] shadow-sm flex items-center justify-center">
-                            {isCreatingYouPi ? (
+                            {isCreatingUpi ? (
                               <div className="flex flex-col items-center gap-2 text-[12px] text-[#5c5a52]">
                                 <RefreshCw size={22} className="animate-spin text-[#016c2f]" />
                                 <span>Generating QR...</span>
                               </div>
-                            ) : youPiSession?.qrCodeDataUrl ? (
+                            ) : upiSession?.qrCodeDataUrl ? (
                               <img
-                                src={youPiSession.qrCodeDataUrl}
+                                src={upiSession.qrCodeDataUrl}
                                 alt="UPI QR Code"
                                 className="w-full h-full object-contain rounded"
                               />
@@ -784,22 +938,22 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                               {[
                                 {
                                   name: "Google Pay",
-                                  scheme: youPiSession?.deepLinks?.gpay || youPiSession?.upiUri,
+                                  scheme: upiSession?.deepLinks?.gpay || upiSession?.upiUri,
                                   color: "#1a73e8",
                                 },
                                 {
                                   name: "PhonePe",
-                                  scheme: youPiSession?.deepLinks?.phonepe || youPiSession?.upiUri,
+                                  scheme: upiSession?.deepLinks?.phonepe || upiSession?.upiUri,
                                   color: "#5f259f",
                                 },
                                 {
                                   name: "Paytm",
-                                  scheme: youPiSession?.deepLinks?.paytm || youPiSession?.upiUri,
+                                  scheme: upiSession?.deepLinks?.paytm || upiSession?.upiUri,
                                   color: "#00b9f5",
                                 },
                                 {
                                   name: "CRED UPI",
-                                  scheme: youPiSession?.deepLinks?.cred || youPiSession?.upiUri,
+                                  scheme: upiSession?.deepLinks?.cred || upiSession?.upiUri,
                                   color: "#000000",
                                 },
                               ].map((app) => (
@@ -820,12 +974,12 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                             <div className="min-w-0 pr-2">
                               <span className="text-[11px] text-[#747576] block">Merchant UPI ID (VPA)</span>
                               <span className="text-[13px] font-mono font-bold text-[#1f3a2c] truncate block">
-                                {youPiSession?.vpa || "8617513004@ptaxis"}
+                                {upiSession?.vpa || ""}
                               </span>
                             </div>
                             <button
                               type="button"
-                              onClick={() => handleCopyVpa(youPiSession?.vpa || "8617513004@ptaxis")}
+                              onClick={() => handleCopyVpa(upiSession?.vpa || "")}
                               className="px-2.5 py-1 text-[11px] font-bold bg-white border border-[#e7e2d8] hover:border-[#1f3a2c] rounded flex items-center gap-1 transition-colors cursor-pointer shrink-0 text-[#202020]"
                             >
                               {copiedVpa ? (
@@ -850,20 +1004,20 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                           <label className="text-[12.5px] font-bold text-[#202020]">
                             Done Paying? Enter 12-Digit UPI Ref / UTR Number:
                           </label>
-                          <span className="text-[11px] text-[#747576]">Instant Auto-Confirm</span>
+                          <span className="text-[11px] text-[#747576]">Matched with our bank record</span>
                         </div>
                         <div className="flex gap-2">
                           <input
                             type="text"
                             maxLength={16}
-                            value={youPiUtr}
-                            onChange={(e) => setYouPiUtr(e.target.value)}
+                            value={upiUtr}
+                            onChange={(e) => setUpiUtr(e.target.value)}
                             placeholder="e.g. 428712345678"
                             className="flex-1 px-3.5 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13.5px] font-mono bg-white outline-none"
                           />
                           <button
                             type="submit"
-                            disabled={isVerifyingUtr || youPiUtr.trim().length < 8}
+                            disabled={isVerifyingUtr || upiUtr.trim().length < 8}
                             className="bg-[#02cb5a] hover:bg-[#02b851] disabled:opacity-50 text-[#1f3a2c] px-4 py-2 rounded-lg font-bold text-[13px] uppercase tracking-wider transition-colors cursor-pointer shrink-0 flex items-center gap-1.5 shadow-none"
                           >
                             {isVerifyingUtr ? (
@@ -871,45 +1025,52 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                             ) : (
                               <CheckCircle2 size={15} />
                             )}
-                            <span>Verify UTR</span>
+                            <span>Submit UTR</span>
                           </button>
                         </div>
                         {utrError && <p className="text-[12px] text-[#e53935]">{utrError}</p>}
+                        {utrSubmitted && (
+                          <p className="text-[12px] text-[#016c2f] font-semibold">
+                            UTR received. Tap &ldquo;Confirm &amp; Place Order&rdquo; below. We dispatch once your payment is matched with our bank record.
+                          </p>
+                        )}
                         <div className="flex items-center gap-1.5 text-[11px] text-[#747576]">
                           <span className="w-1.5 h-1.5 rounded-full bg-[#02cb5a] animate-pulse" />
-                          <span>Payments are verified automatically in real-time.</span>
+                          <span>Waiting for your payment. This screen updates when it is received.</span>
                         </div>
                       </form>
                     </div>
                   )}
                 </div>
 
-                {/* 2. Cash On Delivery */}
-                <div
-                  onClick={() => setPaymentMethod("cod")}
-                  className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
-                    paymentMethod === "cod"
-                      ? "border-[#1f3a2c] bg-[#fafafa]"
-                      : "border-[#e7e2d8] hover:border-[#1f3a2c]/60 bg-white"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-5 h-5 rounded-full border-2 border-[#1f3a2c] flex items-center justify-center">
-                        {paymentMethod === "cod" && (
-                          <div className="w-2.5 h-2.5 rounded-full bg-[#1f3a2c]" />
-                        )}
+                {/* 2. Cash On Delivery (can be switched off in Admin → Payment Gateway) */}
+                {codAvailable && (
+                  <div
+                    onClick={handleSelectCod}
+                    className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
+                      paymentMethod === "cod"
+                        ? "border-[#1f3a2c] bg-[#fafafa]"
+                        : "border-[#e7e2d8] hover:border-[#1f3a2c]/60 bg-white"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-5 h-5 rounded-full border-2 border-[#1f3a2c] flex items-center justify-center">
+                          {paymentMethod === "cod" && (
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#1f3a2c]" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Banknote size={19} className="text-[#016c2f]" />
+                          <span className="font-bold text-[15px] text-[#202020]">
+                            Cash on Delivery (COD)
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Banknote size={19} className="text-[#016c2f]" />
-                        <span className="font-bold text-[15px] text-[#202020]">
-                          Cash on Delivery (COD)
-                        </span>
-                      </div>
+                      <span className="text-[12px] text-[#8e8d8a] font-medium">+₹40 handling fee</span>
                     </div>
-                    <span className="text-[12px] text-[#8e8d8a] font-medium">+₹40 handling fee</span>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Final Amount & Pay Button */}
@@ -942,7 +1103,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
           )}
 
           {/* ================= STEP 3: ORDER SUCCESS ================= */}
-          {step === 3 && (
+          {effectiveStep === 3 && (
             <div className="text-center py-6 sm:py-8 space-y-5">
               <div className="w-16 h-16 rounded-full bg-[#02cb5a]/20 border-2 border-[#02cb5a] flex items-center justify-center mx-auto text-[#016c2f]">
                 <Check size={36} className="stroke-[3]" />
@@ -982,24 +1143,28 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                 <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-2.5">
                   <span className="text-[#5c5a52]">Payment Status</span>
                   <span className="font-bold text-[#016c2f] uppercase">
-                    {paymentMethod === "cod" ? "COD (Pay on Delivery)" : "Paid Successfully"}
+                    {paymentMethod === "cod"
+                      ? "COD (Pay on Delivery)"
+                      : paymentConfirmed
+                        ? "Paid Successfully"
+                        : "Pending Bank Confirmation"}
                   </span>
                 </div>
-                {paymentMethod === "upi" && (
+                {paymentMethod === "upi" && confirmedUtr && (
                   <div className="flex items-center justify-between border-b border-[#e7e2d8] pb-2.5">
                     <span className="text-[#5c5a52]">UPI Ref / UTR</span>
                     <span className="font-mono font-bold text-[#1f3a2c] flex items-center gap-1.5">
-                      {confirmedUtr || youPiUtr || `UTR-${Date.now().toString().slice(-8)}`}
+                      {confirmedUtr}
                       <span className="bg-[#02cb5a]/20 text-[#016c2f] text-[10px] font-sans font-bold px-1.5 py-0.5 rounded">
-                        Verified
+                        {paymentConfirmed ? "Verified" : "Awaiting check"}
                       </span>
                     </span>
                   </div>
                 )}
                 <div className="flex items-center justify-between pt-1">
-                  <span className="font-bold text-[#202020]">Amount Paid</span>
+                  <span className="font-bold text-[#202020]">{paymentConfirmed ? "Amount Paid" : "Order Total"}</span>
                   <span className="font-bold text-[16px] text-[#1f3a2c]">
-                    ₹{finalTotal.toLocaleString("en-IN")}
+                    ₹{(confirmedTotal ?? (latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal)).toLocaleString("en-IN")}
                   </span>
                 </div>
 
@@ -1007,7 +1172,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                   <div className="bg-[#f0f8f4] border border-[#bfdcc9] rounded-lg p-2.5 text-[12px] text-[#1f3a2c] flex items-center justify-between mt-1">
                     <span className="flex items-center gap-1.5">
                       <ShieldCheck size={14} className="text-[#016c2f]" />
-                      <span>Payment verified &amp; securely processed via UPI.</span>
+                      <span>{paymentConfirmed ? "Payment verified & securely processed via UPI." : "We will confirm your UPI payment against our bank record, then dispatch your order."}</span>
                     </span>
                     <span className="font-bold text-[#016c2f] whitespace-nowrap">100% Secure</span>
                   </div>
@@ -1017,7 +1182,10 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
               <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-3">
                 <Link
                   href={`/order/${orderId}`}
-                  onClick={() => onClose()}
+                  onClick={() => {
+                    resetCheckout();
+                    onClose();
+                  }}
                   className="w-full sm:w-auto bg-[#1f3a2c] hover:bg-[#14281e] text-white font-bold text-[14px] px-6 py-3 rounded-lg transition-colors flex items-center justify-center gap-1.5"
                 >
                   <span>Track Live Order &amp; Invoice</span>
@@ -1039,5 +1207,6 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
         </div>
       </div>
     </div>
+    </>
   );
 }

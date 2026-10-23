@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrderById } from "@/lib/ordersDb";
+import { toPublicOrder } from "@/lib/publicOrder";
 
 export async function GET(
   req: NextRequest,
@@ -18,12 +19,12 @@ export async function GET(
 
     return NextResponse.json({
       status: "success",
-      order,
+      order: toPublicOrder(order),
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Order lookup error:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to lookup order" },
+      { error: "Failed to lookup order" },
       { status: 500 }
     );
   }

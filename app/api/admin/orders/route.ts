@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllOrders, saveOrder, getOrderById, StoredOrderData } from "@/lib/ordersDb";
-import { PRODUCTS } from "@/data/products";
+import { priceOrder } from "@/lib/orderPricing";
 import { verifyAdminRequest } from "@/lib/auth";
 import { orderCreationSchema, cleanIndianPhone } from "@/lib/validations/checkout";
 import { sendOrderConfirmationEmail } from "@/lib/email";
+import { getSubmittedUtr } from "@/lib/manualUpi";
+import { alertCodOrder } from "@/lib/gateway/alerts";
+import { publicBaseUrl } from "@/lib/gateway/http";
+import { toPublicOrder } from "@/lib/publicOrder";
+import { getToggles } from "@/lib/gateway/toggles";
 
 export async function GET(req: NextRequest) {
   try {
@@ -78,58 +83,38 @@ export async function POST(req: NextRequest) {
     if (existingOrder) {
       return NextResponse.json({
         status: "success",
-        order: existingOrder,
+        order: toPublicOrder(existingOrder),
         duplicatePrevented: true,
       });
     }
 
-    // 2. Authoritative Price & Line Item Verification from Catalog
-    const validatedItems = body.items.map((item) => {
-      const found = PRODUCTS.find(
-        (p) =>
-          p.id === item.productId ||
-          p.handle === item.productId ||
-          (item.productId && item.productId.startsWith(p.id))
+    // 2. Cash on Delivery can be switched off in Admin → Payment Gateway
+    if (body.paymentMethod === "cod" && !(await getToggles()).cod) {
+      return NextResponse.json(
+        { error: "Cash on Delivery is not available right now. Please pay by UPI." },
+        { status: 400 }
       );
-
-      const authoritativePrice = found
-        ? found.price
-        : Math.max(1, Math.round(item.price));
-      const validQuantity = Math.max(1, Math.floor(item.quantity));
-
-      return {
-        ...item,
-        price: authoritativePrice,
-        quantity: validQuantity,
-      };
-    });
-
-    const authoritativeSubtotal = validatedItems.reduce(
-      (sum, it) => sum + it.price * it.quantity,
-      0
-    );
-
-    // 3. Authoritative Coupon Discount Calculation
-    let authoritativeDiscount = 0;
-    if (body.couponCode) {
-      const code = body.couponCode.trim().toUpperCase();
-      if (code === "WELCOME10" || code === "TEA10") {
-        authoritativeDiscount = Math.round(authoritativeSubtotal * 0.1);
-      } else if (code === "FIRSTTEA") {
-        authoritativeDiscount = Math.min(150, authoritativeSubtotal);
-      }
     }
 
-    // 4. Authoritative Shipping & COD Fees
-    const authoritativeShipping = authoritativeSubtotal >= 399 ? 0 : 50;
-    const authoritativeCod = body.paymentMethod === "cod" ? 40 : 0;
-    const authoritativeTotal = Math.max(
-      0,
-      authoritativeSubtotal - authoritativeDiscount + authoritativeShipping + authoritativeCod
-    );
+    // 3. Authoritative prices, coupon, shipping and COD fee (lib/orderPricing)
+    const priced = priceOrder(body);
+    const validatedItems = priced.items;
+    const authoritativeSubtotal = priced.subtotal;
+    const authoritativeDiscount = priced.discountAmount;
+    const authoritativeShipping = priced.shippingFee;
+    const authoritativeCod = priced.codFee;
+    const authoritativeTotal = priced.totalAmount;
+
+    // 4. Payment status is decided here, never by the browser. This route takes COD orders and
+    // the manual-UPI fallback; a customer-typed UTR stays PENDING until the admin reconciles it.
+    // (Gateway UPI orders are created by lib/gateway when the money arrives.)
+    const paymentStatus = "PENDING" as const;
+    const notes = body.notes || null;
+    const utrNumber =
+      body.paymentMethod === "upi" ? getSubmittedUtr(body.orderNumber) || body.utrNumber || null : null;
 
     const saved = await saveOrder({
-      id: rawBody.id || body.orderNumber,
+      id: body.orderNumber,
       orderNumber: body.orderNumber,
       customerName: body.customerName,
       customerPhone: body.customerPhone,
@@ -146,10 +131,10 @@ export async function POST(req: NextRequest) {
       codFee: authoritativeCod,
       totalAmount: authoritativeTotal,
       paymentMethod: body.paymentMethod,
-      paymentStatus: body.paymentStatus,
-      orderStatus: body.orderStatus,
-      utrNumber: body.utrNumber || null,
-      notes: body.notes || null,
+      paymentStatus,
+      orderStatus: "PROCESSING",
+      utrNumber,
+      notes,
       items: validatedItems,
     });
 
@@ -166,14 +151,21 @@ export async function POST(req: NextRequest) {
       codFee: authoritativeCod,
       totalAmount: authoritativeTotal,
       paymentMethod: body.paymentMethod,
-      paymentStatus: body.paymentStatus,
-      utrNumber: body.utrNumber || null,
+      paymentStatus,
+      utrNumber,
       address: body.address,
       city: body.city,
       state: body.state,
       pincode: body.pincode,
       landmark: body.landmark || null,
     }).catch((e) => console.warn("[Email Dispatch Error]:", e));
+
+    // Send WhatsApp alert to shop owner for COD orders
+    if (body.paymentMethod === "cod") {
+      alertCodOrder(saved, publicBaseUrl(req)).catch((e) =>
+        console.warn("[WhatsApp COD Alert Error]:", e?.message || e)
+      );
+    }
 
     return NextResponse.json({
       status: "success",
@@ -182,7 +174,7 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error("Error creating order:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to create order" },
+      { error: "Failed to create order" },
       { status: 500 }
     );
   }

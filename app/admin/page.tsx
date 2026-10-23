@@ -33,7 +33,7 @@ export default function AdminOverviewPage() {
     try {
       const [ordersRes, healthRes] = await Promise.allSettled([
         fetch("/api/admin/orders"),
-        fetch("/api/health"),
+        fetch("/api/admin/status"),
       ]);
 
       if (ordersRes.status === "fulfilled") {
@@ -147,7 +147,7 @@ export default function AdminOverviewPage() {
 
         <div className="flex items-center gap-2 self-stretch md:self-auto justify-end shrink-0">
           <a
-            href="/api/health"
+            href="/api/admin/status"
             target="_blank"
             rel="noopener noreferrer"
             className="px-3 py-1.5 bg-[#fafafa] hover:bg-[#f0ece1] border border-[#e7e2d8] rounded-lg text-[12px] font-semibold text-[#1f3a2c] flex items-center gap-1.5 transition-colors"
@@ -200,14 +200,14 @@ export default function AdminOverviewPage() {
         {/* UPI Payments */}
         <div className="bg-white border border-[#e7e2d8] rounded-2xl p-5 shadow-2xs">
           <div className="flex items-center justify-between text-[#747576] mb-3">
-            <span className="text-[13px] font-semibold">UPI (YouPI-PG)</span>
+            <span className="text-[13px] font-semibold">UPI (TeaPay)</span>
             <div className="w-9 h-9 rounded-xl bg-[#02cb5a]/15 text-[#016c2f] flex items-center justify-center">
               <CreditCard size={19} />
             </div>
           </div>
           <div className="text-[26px] font-bold text-[#1f3a2c]">{upiOrders.length}</div>
           <span className="text-[12px] text-[#747576] mt-1 block">
-            VPA: 8617513004@ptaxis
+            Direct-to-bank UPI
           </span>
         </div>
 

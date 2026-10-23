@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, Lock, Mail, ArrowRight, Database, KeyRound } from "lucide-react";
+import { ShieldCheck, Lock, Mail, ArrowRight } from "lucide-react";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -38,12 +38,6 @@ export default function AdminLoginPage() {
     }
   };
 
-  const handleUseDemoCredentials = () => {
-    setEmail("admin@teabox.com");
-    setPassword("adminTeabox2026!");
-    setError("");
-  };
-
   return (
     <div className="min-h-screen bg-[#0e1d15] flex flex-col items-center justify-center p-4 relative overflow-hidden text-white">
       {/* Background Ambient Glows */}
@@ -59,7 +53,7 @@ export default function AdminLoginPage() {
             <span>Secure Admin Portal</span>
           </div>
           <h1 className="font-stencil text-[30px] font-bold tracking-wider text-white">
-            TEABOX
+            DEMOBOX
           </h1>
           <p className="text-[13px] text-white/70 mt-1">
             Store Administration · PostgreSQL &amp; Prisma ORM
@@ -84,6 +78,7 @@ export default function AdminLoginPage() {
               <input
                 type="email"
                 required
+                autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@teabox.com"
@@ -101,6 +96,7 @@ export default function AdminLoginPage() {
               <input
                 type="password"
                 required
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••••••"
@@ -129,21 +125,9 @@ export default function AdminLoginPage() {
           </button>
         </form>
 
-        {/* 1-Click Demo Credentials Pill */}
-        <div className="mt-6 pt-5 border-t border-[#2e5440]/60 text-center">
-          <button
-            type="button"
-            onClick={handleUseDemoCredentials}
-            className="w-full bg-white/5 hover:bg-white/10 border border-white/15 text-[12.5px] text-white/80 py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer font-medium"
-          >
-            <KeyRound size={14} className="text-[#02cb5a]" />
-            <span>Click to Fill Master Admin Credentials</span>
-          </button>
-          <div className="mt-2 text-[11px] text-white/50 flex items-center justify-center gap-1.5">
-            <Database size={11} className="text-[#02cb5a]" />
-            <span>admin@teabox.com · adminTeabox2026!</span>
-          </div>
-        </div>
+        <p className="mt-6 pt-5 border-t border-[#2e5440]/60 text-center text-[11.5px] text-white/50">
+          Sessions end after 12 hours. Repeated wrong passwords lock sign-in for 15 minutes.
+        </p>
       </div>
     </div>
   );

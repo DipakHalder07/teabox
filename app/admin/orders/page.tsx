@@ -16,8 +16,10 @@ import {
   Phone,
   User,
   ShoppingBag,
+  Trash2,
 } from "lucide-react";
 import { StoredOrderData } from "@/lib/ordersDb";
+import { istDateTime } from "@/lib/istTime";
 
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<StoredOrderData[]>([]);
@@ -45,6 +47,30 @@ export default function AdminOrdersPage() {
   useEffect(() => {
     fetchOrders();
   }, []);
+
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!confirm(`Are you sure you want to delete order ${orderId}? This cannot be undone.`)) {
+      return;
+    }
+    setIsUpdating(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setOrders((prev) => prev.filter((o) => o.id !== orderId));
+        setActiveOrder(null);
+        toast.success(`Order ${orderId} deleted successfully`);
+      } else {
+        toast.error(data?.error || "Failed to delete order");
+      }
+    } catch {
+      toast.error("Network error while deleting order");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const handleUpdateStatus = async (
     orderId: string,
@@ -188,11 +214,7 @@ export default function AdminOrdersPage() {
                       {order.orderNumber}
                     </td>
                     <td className="py-3.5 px-4 text-[#747576] text-[12.5px] whitespace-nowrap">
-                      {new Date(order.createdAt).toLocaleDateString("en-IN", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
+                      {istDateTime(order.createdAt)}
                     </td>
                     <td className="py-3.5 px-4">
                       <span className="font-semibold text-[#202020] block">
@@ -303,7 +325,7 @@ export default function AdminOrdersPage() {
                   </span>
                 </div>
                 <span className="text-[12px] text-[#747576]">
-                  Placed on {new Date(activeOrder.createdAt).toLocaleString("en-IN")}
+                  Placed on {istDateTime(activeOrder.createdAt)}
                 </span>
               </div>
               <button
@@ -371,7 +393,7 @@ export default function AdminOrdersPage() {
                 <div>
                   <span className="text-[#5c5a52] block text-[11px]">Method</span>
                   <span className="font-bold text-[#202020] uppercase">
-                    {activeOrder.paymentMethod === "upi" ? "UPI (YouPI-PG)" : "Cash on Delivery"}
+                    {activeOrder.paymentMethod === "upi" ? "UPI (TeaPay)" : "Cash on Delivery"}
                   </span>
                 </div>
                 {activeOrder.utrNumber && (
@@ -488,6 +510,16 @@ export default function AdminOrdersPage() {
                   Confirm Payment (Mark PAID)
                 </button>
               )}
+
+              <button
+                type="button"
+                disabled={isUpdating}
+                onClick={() => handleDeleteOrder(activeOrder.id)}
+                className="px-3.5 py-2.5 bg-[#fff5f5] border border-[#feb2b2] hover:bg-[#ffe3e3] text-[#c53030] rounded-xl font-bold text-[13px] flex items-center gap-1.5 transition-colors cursor-pointer ml-auto"
+              >
+                <Trash2 size={15} />
+                <span>Delete Order</span>
+              </button>
             </div>
           </div>
         </div>

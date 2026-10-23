@@ -1,4 +1,4 @@
-import { prisma, isDatabaseConnected } from "./prisma";
+import { isDatabaseConnected } from "./prisma";
 
 export interface DatabaseStatusInfo {
   connected: boolean;

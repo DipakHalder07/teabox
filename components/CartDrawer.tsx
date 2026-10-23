@@ -251,7 +251,7 @@ export default function CartDrawer() {
         )}
       </AnimatePresence>
 
-      {/* Headless Fastrr Checkout Modal with YouPI-PG (accessible anywhere) */}
+      {/* Headless Fastrr Checkout Modal with TeaPay UPI (accessible anywhere) */}
       <FastrrCheckoutModal
         isOpen={isCheckoutOpen}
         onClose={closeCheckout}
