@@ -111,7 +111,7 @@ export default function JustArrived() {
             return (
               <div
                 key={product.id}
-                className="min-w-[190px] max-w-[75vw] sm:min-w-[240px] lg:min-w-0 flex-none lg:flex-initial group bg-white border border-[#e7e2d8] rounded-[12px] overflow-hidden flex flex-col justify-between transition-all duration-200 hover:border-[#1f3a2c]/20 hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)]"
+                className="min-w-[190px] max-w-[75vw] sm:min-w-[240px] lg:min-w-0 flex-none lg:flex-initial group bg-white border border-[#e7e2d8] rounded-[12px] overflow-hidden flex flex-col justify-between"
               >
                 {/* Product Media with Secondary Image Hover Transition + Link */}
                 <Link

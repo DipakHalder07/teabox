@@ -33,7 +33,7 @@ export default function ProductCard({ product }: { product: Product }) {
 
   return (
     <div
-      className="group relative bg-white border border-[#E7E2D8] rounded-[12px] overflow-hidden flex flex-col justify-between transition-all duration-200 hover:border-[#1f3a2c]/20 hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)]"
+      className="group relative bg-white border border-[#E7E2D8] rounded-[12px] overflow-hidden flex flex-col justify-between"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
