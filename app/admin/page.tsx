@@ -26,6 +26,7 @@ export default function AdminOverviewPage() {
     driver: string;
     host: string;
     latencyMs: number | null;
+    problem: "not-configured" | "local-url-on-server" | "unreachable" | null;
   } | null>(null);
 
   const fetchDashboardData = async () => {
@@ -116,7 +117,7 @@ export default function AdminOverviewPage() {
               <span className="font-bold text-[15px] text-[#202020]">
                 {dbStatus?.connected
                   ? "PostgreSQL Connected (Prisma ORM)"
-                  : "Database: In-Memory Storage Active (PostgreSQL Offline)"}
+                  : "Database not connected: orders are not being saved"}
               </span>
               <span
                 className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 ${
@@ -140,7 +141,11 @@ export default function AdminOverviewPage() {
             <p className="text-[12.5px] text-[#747576] mt-0.5">
               {dbStatus?.connected
                 ? `Orders, inventory, and payment logs are synced in real-time to PostgreSQL at ${dbStatus.host}.`
-                : `PostgreSQL server is offline at ${dbStatus?.host || "localhost:5432"}. The store is running without disruption using memory caching.`}
+                : dbStatus?.problem === "local-url-on-server"
+                  ? "DATABASE_URL on Vercel points to 127.0.0.1, the database on your own computer, which Vercel cannot reach. In Vercel → Storage, create a Neon database for this project, delete the old DATABASE_URL, and redeploy."
+                  : dbStatus?.problem === "not-configured"
+                    ? "DATABASE_URL is not set. In Vercel → Storage, create a Neon database for this project and redeploy."
+                    : `Cannot reach the database at ${dbStatus?.host || "the configured address"}. Check DATABASE_URL (and that the database is running).`}
             </p>
           </div>
         </div>

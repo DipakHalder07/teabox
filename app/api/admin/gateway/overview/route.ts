@@ -7,6 +7,7 @@ import { getGmailStatus } from "@/lib/gateway/gmail";
 import { checkoutStage, publicBaseUrl } from "@/lib/gateway/http";
 import { getToggles } from "@/lib/gateway/toggles";
 import { getAlertSettings } from "@/lib/gateway/alerts";
+import { isLocalUrlOnServer } from "@/lib/dbStatus";
 
 const DEVICE_ONLINE_MS = 3 * 60 * 1000;
 
@@ -44,7 +45,9 @@ export async function GET(req: NextRequest) {
       ...base,
       database: false,
       databaseHost,
-      databaseLocal: Boolean(databaseHost && /^(127\.0\.0\.1|localhost):5433$/.test(databaseHost)),
+      databaseLocal:
+        !isLocalUrlOnServer() && Boolean(databaseHost && /^(127\.0\.0\.1|localhost):5433$/.test(databaseHost)),
+      databaseLocalOnServer: isLocalUrlOnServer(),
     });
   }
 

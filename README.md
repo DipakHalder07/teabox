@@ -15,21 +15,23 @@ Local settings live in `.env` (copy `.env.example` to start).
 
 ## Deploy to Vercel
 
-### 1. Create the database (Neon, free)
+### 1. Create the database (Neon, free, from inside Vercel)
 
-1. Sign up at https://neon.tech and create a project (region: Singapore or Mumbai).
-2. Copy two connection strings from the Neon dashboard:
-   - **Pooled** (host contains `-pooler`): for Vercel. Add `&pgbouncer=true` at the end.
-   - **Direct** (no `-pooler`): only for step 3 below.
+1. In Vercel open the project → **Settings → Environment Variables** and **delete** any
+   `DATABASE_URL` that points to `127.0.0.1` (that is your computer; Vercel cannot reach it).
+2. Open the **Storage** tab → **Create Database** → **Neon** (free plan, region Singapore) →
+   connect it to this project for Production, Preview and Development.
+   Vercel then adds `DATABASE_URL` and `DATABASE_URL_UNPOOLED` for you.
 
-### 2. Add the environment variables on Vercel
+Every deploy creates or updates the tables and adds missing products by itself
+(`scripts/vercel-build.mjs`), so there is nothing to run by hand.
 
-Import the project on https://vercel.com/new (root directory: `teabox`), then open
-**Project → Settings → Environment Variables** and add:
+### 2. Add the other environment variables on Vercel
+
+**Project → Settings → Environment Variables**:
 
 | Name | Value |
 | --- | --- |
-| `DATABASE_URL` | Neon **pooled** URL with `&pgbouncer=true` |
 | `NEXT_PUBLIC_APP_URL` | your site address, e.g. `https://teabox.vercel.app` |
 | `ADMIN_JWT_SECRET` | long random text (`openssl rand -base64 48`) |
 | `ADMIN_DEFAULT_EMAIL` | admin sign-in email |
@@ -43,20 +45,9 @@ Optional: `WHATSAPP_SERVICE_URL` + `WHATSAPP_SERVICE_TOKEN` (checkout WhatsApp c
 alerts; the service in `whatsapp-service/` runs outside Vercel, for free on Render: see
 `whatsapp-service/README.md`), and `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` (Gmail bank alerts).
 
-### 3. Create the tables (once, and again after schema changes)
+### 3. Deploy
 
-Run on your computer with the Neon **direct** URL:
-
-```bash
-DATABASE_URL="<neon direct url>" npx prisma db push
-DATABASE_URL="<neon direct url>" ADMIN_DEFAULT_PASSWORD="<same as on Vercel>" npm run db:seed
-```
-
-The seed adds the products and the admin user.
-
-### 4. Deploy
-
-Click **Deploy** on Vercel (or run `vercel --prod`). After it finishes:
+Open **Deployments** → the latest one → **⋯ → Redeploy** (or push to GitHub). After it finishes:
 
 1. Open `https://<your-site>/api/health`: it should say `"status":"ok"`.
 2. Sign in at `https://<your-site>/admin/login`.
