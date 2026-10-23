@@ -8,7 +8,6 @@ import {
   Check,
   ShieldCheck,
   Truck,
-  QrCode,
   Smartphone,
   Banknote,
   ArrowRight,
@@ -22,34 +21,24 @@ import {
 } from "lucide-react";
 import { useCart } from "./context/CartContext";
 import { cleanIndianPhone } from "@/lib/validations/checkout";
-import YouPiGatewayPanel, { cancelYouPiGatewaySession, GatewayHealthInfo } from "./YouPiGatewayPanel";
+import TeaPayPanel, { cancelTeaPaySession, PaymentLeaveDialog, TeaPaySessionView } from "./TeaPayPanel";
 
 interface FastrrCheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-// "gateway": YouPI-PG flow (WhatsApp OTP, auto-confirm). "manual": shop QR + typed UTR.
-interface YouPiSessionData {
-  mode: "gateway" | "manual";
-  paymentId: string;
-  orderId: string;
-  amount: number;
-  currency: string;
+// "native": the shop's own UPI gateway (TeaPay). "manual": shop QR + typed UTR (used without a database).
+interface UpiSessionData extends Partial<Omit<TeaPaySessionView, "status">> {
+  mode: "native" | "manual";
+  status: string;
+  paymentId?: string;
+  orderId?: string;
+  amount?: number;
+  currency?: string;
   vpa?: string;
   merchantName?: string;
-  upiUri?: string;
-  qrCodeDataUrl?: string;
-  deepLinks?: {
-    gpay: string;
-    phonepe: string;
-    paytm: string;
-    cred: string;
-    generic: string;
-  };
   expiresAt?: string;
-  health?: GatewayHealthInfo | null;
-  status: string;
 }
 
 export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutModalProps) {
@@ -70,23 +59,25 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number } | null>(null);
   const [couponError, setCouponError] = useState("");
 
-  // Payment method (UPI via YouPI-PG or Cash on Delivery)
+  // Payment method (UPI via TeaPay or Cash on Delivery)
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "cod">("upi");
   const [upiApp, setUpiApp] = useState<"qr" | "gpay" | "phonepe" | "paytm" | "cred">("qr");
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderId, setOrderId] = useState("");
 
-  // YouPI-PG Gateway State
-  const [youPiSession, setYouPiSession] = useState<YouPiSessionData | null>(null);
-  const [isCreatingYouPi, setIsCreatingYouPi] = useState(false);
-  const [youPiUtr, setYouPiUtr] = useState("");
+  // UPI payment state
+  const [upiSession, setUpiSession] = useState<UpiSessionData | null>(null);
+  const [isCreatingUpi, setIsCreatingUpi] = useState(false);
+  const [upiUtr, setUpiUtr] = useState("");
   const [confirmedUtr, setConfirmedUtr] = useState("");
   const [utrError, setUtrError] = useState("");
   const [isVerifyingUtr, setIsVerifyingUtr] = useState(false);
-  // paymentConfirmed: the gateway's signed webhook confirmed the money. utrSubmitted: customer typed a UTR (unverified).
+  // paymentConfirmed: the bank credit was matched (the order was created on the server). utrSubmitted: manual-UPI UTR, unverified.
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [utrSubmitted, setUtrSubmitted] = useState(false);
   const persistOrderRef = useRef<(utr: string | null) => Promise<void>>(async () => {});
+  // Leaving while the UPI payment is open asks first (PaymentLeaveDialog).
+  const [leaveAction, setLeaveAction] = useState<null | (() => void)>(null);
   const [copiedVpa, setCopiedVpa] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState(600); // 10 minutes
 
@@ -156,10 +147,56 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   const codFee = paymentMethod === "cod" ? 40 : 0;
   const finalTotal = Math.max(0, subtotal - discountAmount + shippingFee + codFee);
 
-  // Initialize YouPI Payment Session
-  const initYouPiSession = async (currentOrderId: string, amountToPay: number) => {
-    setIsCreatingYouPi(true);
+  const [confirmedTotal, setConfirmedTotal] = useState<number | null>(null);
+  const latestTotalRef = useRef(finalTotal);
+  useEffect(() => {
+    if (finalTotal > 0 && cartItems.length > 0) {
+      latestTotalRef.current = finalTotal;
+    }
+  }, [finalTotal, cartItems.length]);
+
+  // Starts the UPI step: the shop's own gateway first, manual UPI if it is unavailable.
+  const initUpiSession = async (currentOrderId: string, amountToPay: number) => {
+    setIsCreatingUpi(true);
     try {
+      const startRes = await fetch("/api/pay/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerName: fullName,
+          customerPhone: phone,
+          customerEmail: null,
+          address,
+          city,
+          state,
+          pincode,
+          landmark: landmark || null,
+          couponCode: appliedCoupon?.code || null,
+          items: cartItems.map((item) => ({
+            productId: item.id,
+            title: item.title,
+            weight: item.weight,
+            price: item.price,
+            quantity: item.quantity,
+            image: item.image,
+          })),
+        }),
+      });
+      const started = await startRes.json().catch(() => ({}));
+      if (startRes.ok) {
+        setUpiSession({ mode: "native", ...started });
+        setOrderId(started.orderNumber);
+        if (typeof started.orderTotal === "number") {
+          setConfirmedTotal(started.orderTotal);
+        }
+        return;
+      }
+      if (started?.fallback !== "manual") {
+        alert(started?.error || "Could not start UPI payment. Please try again or choose Cash on Delivery.");
+        return;
+      }
+
+      // Manual UPI fallback (no database)
       const res = await fetch("/api/payments/youpi/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -175,13 +212,13 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
       });
       const data = await res.json();
       if (data?.data) {
-        setYouPiSession(data.data);
+        setUpiSession(data.data);
         setCountdownSeconds(600);
       }
     } catch (err) {
-      console.error("Failed to initialize YouPI session:", err);
+      console.error("Failed to start UPI payment:", err);
     } finally {
-      setIsCreatingYouPi(false);
+      setIsCreatingUpi(false);
     }
   };
 
@@ -198,13 +235,13 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
     const generatedId = orderId || `TB-${Math.floor(100000 + Math.random() * 900000)}`;
     setOrderId(generatedId);
     setStep(2);
-    initYouPiSession(generatedId, finalTotal);
+    initUpiSession(generatedId, finalTotal);
   };
 
-  // Poll for YouPI payment confirmation from observer
+  // Manual UPI: poll payment status
   useEffect(() => {
     if (!isOpen || step !== 2 || paymentMethod !== "upi" || !orderId) return;
-    if (youPiSession?.mode === "gateway") return; // the gateway panel polls YouPI itself
+    if (upiSession?.mode === "native") return; // TeaPayPanel watches the payment itself
 
     let done = false;
     const interval = setInterval(async () => {
@@ -216,6 +253,8 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
           clearInterval(interval);
           if (data?.utr) setConfirmedUtr(data.utr);
           setPaymentConfirmed(true);
+          const currentTotal = latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal;
+          setConfirmedTotal(currentTotal);
           await persistOrderRef.current(data?.utr || null);
           setIsProcessing(false);
           setStep(3);
@@ -225,9 +264,9 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
     }, 3500);
 
     return () => clearInterval(interval);
-  }, [isOpen, step, paymentMethod, orderId, clearCart, youPiSession?.mode]);
+  }, [isOpen, step, paymentMethod, orderId, clearCart, upiSession?.mode]);
 
-  // Countdown timer for YouPI dynamic QR
+  // Countdown timer for the manual-UPI QR
   useEffect(() => {
     if (!isOpen || step !== 2 || paymentMethod !== "upi") return;
     if (countdownSeconds <= 0) return;
@@ -246,7 +285,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   const handleVerifyUtr = async (e: React.FormEvent) => {
     e.preventDefault();
     setUtrError("");
-    const clean = youPiUtr.trim().replace(/\D/g, "");
+    const clean = upiUtr.trim().replace(/\D/g, "");
     if (clean.length < 12) {
       setUtrError("Please enter a valid 12-digit UPI UTR / Ref Number from your payment app receipt.");
       return;
@@ -279,14 +318,15 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   const resetCheckout = () => {
     setStep(1);
     setOrderId("");
-    setYouPiSession(null);
-    setYouPiUtr("");
+    setUpiSession(null);
+    setUpiUtr("");
     setConfirmedUtr("");
     setUtrError("");
     setPaymentConfirmed(false);
     setUtrSubmitted(false);
     setIsProcessing(false);
     setPaymentMethod("upi");
+    setConfirmedTotal(null);
   };
 
   // Reset state whenever modal opens if previous checkout was completed
@@ -296,12 +336,18 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
     }
   }, [isOpen]);
 
-  const handleClose = () => {
+  const closeNow = () => {
     if (step === 3) {
       resetCheckout();
     }
     onClose();
   };
+  // Leaving mid-payment starts the checkout over next time.
+  const leaveCheckout = () => {
+    if (paymentInProgress) resetCheckout();
+    closeNow();
+  };
+  const handleClose = () => guardLeave(leaveCheckout);
 
   // Auto scroll to top on step transition
   useEffect(() => {
@@ -332,7 +378,6 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
           totalAmount: finalTotal,
           paymentMethod,
           utrNumber: paymentMethod === "upi" ? utr : null,
-          paymentId: paymentMethod === "upi" && youPiSession?.mode === "gateway" ? youPiSession.paymentId : null,
           items: cartItems.map((item) => ({
             productId: item.id,
             title: item.title,
@@ -351,28 +396,37 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
     persistOrderRef.current = persistOrder;
   });
 
-  // YouPI confirmed the money: save the order (the server re-checks with YouPI) and finish.
-  const handleGatewayPaid = async () => {
+  // The bank credit was matched and the server created the order: show the confirmation.
+  const handleUpiPaid = (view: TeaPaySessionView) => {
     setPaymentConfirmed(true);
-    setIsProcessing(true);
-    await persistOrder(null);
-    setIsProcessing(false);
+    if (view.utr) setConfirmedUtr(view.utr);
+    setOrderId(view.orderNumber);
+    const verifiedTotal = view.orderTotal || (latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal);
+    setConfirmedTotal(verifiedTotal);
     setStep(3);
     clearCart();
   };
 
-  // A gateway session belongs to one order number, so a retry starts under a new one.
-  const restartYouPiSession = () => {
+  const paymentInProgress =
+    step === 2 && paymentMethod === "upi" && upiSession?.mode === "native" && !paymentConfirmed;
+  const guardLeave = (proceed: () => void) => {
+    if (paymentInProgress) setLeaveAction(() => proceed);
+    else proceed();
+  };
+
+  // Start over with a fresh payment (and order number).
+  const restartUpiSession = () => {
+    if (upiSession?.mode === "native" && upiSession.sessionId) cancelTeaPaySession(upiSession.sessionId);
     const newOrderId = `TB-${Math.floor(100000 + Math.random() * 900000)}`;
     setOrderId(newOrderId);
-    setYouPiSession(null);
-    initYouPiSession(newOrderId, finalTotal);
+    setUpiSession(null);
+    initUpiSession(newOrderId, finalTotal);
   };
 
   const handleSelectCod = () => {
-    if (youPiSession?.mode === "gateway" && !paymentConfirmed) {
-      cancelYouPiGatewaySession(youPiSession.paymentId);
-      setYouPiSession(null);
+    if (upiSession?.mode === "native" && !paymentConfirmed) {
+      if (upiSession.sessionId) cancelTeaPaySession(upiSession.sessionId);
+      setUpiSession(null);
       setOrderId(`TB-${Math.floor(100000 + Math.random() * 900000)}`);
     }
     setPaymentMethod("cod");
@@ -381,7 +435,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   const handlePlaceOrder = async () => {
     if (paymentMethod === "upi" && !paymentConfirmed && !utrSubmitted) {
       const msg =
-        youPiSession?.mode === "gateway"
+        upiSession?.mode === "native"
           ? "Please complete the UPI payment above. Your order is placed automatically once it is received."
           : "Please pay using the QR / UPI app, then enter your 12-digit UTR to place the order.";
       setUtrError(msg);
@@ -389,6 +443,8 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
       return;
     }
 
+    const currentTotal = latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal;
+    setConfirmedTotal(currentTotal);
     setIsProcessing(true);
     await persistOrder(confirmedUtr || null);
 
@@ -402,6 +458,20 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   if (!isOpen) return null;
 
   return (
+    <>
+    {leaveAction && upiSession?.sessionId && (
+      <PaymentLeaveDialog
+        sessionId={upiSession.sessionId}
+        payAmount={upiSession.payAmount || String(finalTotal)}
+        onStay={() => setLeaveAction(null)}
+        onLeave={() => {
+          const proceed = leaveAction;
+          setLeaveAction(null);
+          setUpiSession(null);
+          proceed();
+        }}
+      />
+    )}
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-200">
       {/* Backdrop */}
       <div
@@ -484,7 +554,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                       <div key={item.id} className="py-2 flex items-center justify-between gap-3 text-[13px]">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className="relative w-8 h-8 rounded bg-white border border-[#e7e2d8] shrink-0 overflow-hidden">
-                            <Image src={item.image} alt={item.title} fill sizes="32px" className="object-contain p-0.5" />
+                            <Image src={item.image} alt={item.title} fill sizes="32px" className="object-cover" />
                           </div>
                           <div className="min-w-0">
                             <span className="font-semibold text-[#202020] truncate block">{item.title}</span>
@@ -716,7 +786,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                 </div>
                 <button
                   type="button"
-                  onClick={() => setStep(1)}
+                  onClick={() => guardLeave(() => setStep(1))}
                   className="text-[#016c2f] font-bold underline hover:opacity-80"
                 >
                   Edit
@@ -729,12 +799,12 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                   Select Payment Method
                 </h4>
 
-                {/* 1. UPI Powered by YouPI-PG */}
+                {/* 1. UPI (TeaPay) */}
                 <div
                   onClick={() => {
                     setPaymentMethod("upi");
-                    if (!youPiSession && orderId) {
-                      initYouPiSession(orderId, finalTotal);
+                    if (!upiSession && orderId) {
+                      initUpiSession(orderId, finalTotal);
                     }
                   }}
                   className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
@@ -751,9 +821,12 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        <QrCode size={19} className="text-[#016c2f]" />
-                        <span className="font-bold text-[15px] text-[#202020]">
-                          UPI (Google Pay, PhonePe, Paytm &amp; QR)
+                        <Image src="/assets/upi/upi.svg" alt="UPI" width={44} height={16} className="h-4 w-auto" />
+                        <span className="font-bold text-[15px] text-[#202020]">Pay by UPI</span>
+                        <span className="hidden sm:flex items-center gap-1 ml-1">
+                          {["gpay", "phonepe", "paytm", "cred", "bhim"].map((app) => (
+                            <Image key={app} src={`/assets/upi/${app}.png`} alt="" width={20} height={20} className="rounded" />
+                          ))}
                         </span>
                       </div>
                     </div>
@@ -762,22 +835,19 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                     </span>
                   </div>
 
-                  {paymentMethod === "upi" && youPiSession?.mode === "gateway" && (
+                  {paymentMethod === "upi" && upiSession?.mode === "native" && (
                     <div className="mt-4 pt-4 border-t border-[#e7e2d8]" onClick={(e) => e.stopPropagation()}>
-                      <YouPiGatewayPanel
-                        key={youPiSession.paymentId}
-                        paymentId={youPiSession.paymentId}
-                        phone={cleanIndianPhone(phone)}
-                        name={fullName}
-                        amount={finalTotal}
-                        initialHealth={youPiSession.health}
-                        onPaid={handleGatewayPaid}
-                        onRetry={restartYouPiSession}
+                      <TeaPayPanel
+                        key={upiSession.sessionId}
+                        session={upiSession as TeaPaySessionView}
+                        onPaid={handleUpiPaid}
+                        onRestart={restartUpiSession}
+                        onBackPressed={() => guardLeave(leaveCheckout)}
                       />
                     </div>
                   )}
 
-                  {paymentMethod === "upi" && youPiSession?.mode !== "gateway" && (
+                  {paymentMethod === "upi" && upiSession?.mode !== "native" && (
                     <div className="mt-4 pt-4 border-t border-[#e7e2d8] space-y-4" onClick={(e) => e.stopPropagation()}>
                       {/* UPI Info Sub-banner */}
                       <div className="bg-[#f0f8f4] border border-[#bfdcc9] rounded-lg p-3 text-[12.5px] text-[#1f3a2c] flex items-center justify-between">
@@ -795,14 +865,14 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                         {/* Dynamic QR Display */}
                         <div className="flex flex-col items-center text-center">
                           <div className="relative w-44 h-44 bg-white p-2 rounded-xl border border-[#e7e2d8] shadow-sm flex items-center justify-center">
-                            {isCreatingYouPi ? (
+                            {isCreatingUpi ? (
                               <div className="flex flex-col items-center gap-2 text-[12px] text-[#5c5a52]">
                                 <RefreshCw size={22} className="animate-spin text-[#016c2f]" />
                                 <span>Generating QR...</span>
                               </div>
-                            ) : youPiSession?.qrCodeDataUrl ? (
+                            ) : upiSession?.qrCodeDataUrl ? (
                               <img
-                                src={youPiSession.qrCodeDataUrl}
+                                src={upiSession.qrCodeDataUrl}
                                 alt="UPI QR Code"
                                 className="w-full h-full object-contain rounded"
                               />
@@ -837,22 +907,22 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                               {[
                                 {
                                   name: "Google Pay",
-                                  scheme: youPiSession?.deepLinks?.gpay || youPiSession?.upiUri,
+                                  scheme: upiSession?.deepLinks?.gpay || upiSession?.upiUri,
                                   color: "#1a73e8",
                                 },
                                 {
                                   name: "PhonePe",
-                                  scheme: youPiSession?.deepLinks?.phonepe || youPiSession?.upiUri,
+                                  scheme: upiSession?.deepLinks?.phonepe || upiSession?.upiUri,
                                   color: "#5f259f",
                                 },
                                 {
                                   name: "Paytm",
-                                  scheme: youPiSession?.deepLinks?.paytm || youPiSession?.upiUri,
+                                  scheme: upiSession?.deepLinks?.paytm || upiSession?.upiUri,
                                   color: "#00b9f5",
                                 },
                                 {
                                   name: "CRED UPI",
-                                  scheme: youPiSession?.deepLinks?.cred || youPiSession?.upiUri,
+                                  scheme: upiSession?.deepLinks?.cred || upiSession?.upiUri,
                                   color: "#000000",
                                 },
                               ].map((app) => (
@@ -873,12 +943,12 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                             <div className="min-w-0 pr-2">
                               <span className="text-[11px] text-[#747576] block">Merchant UPI ID (VPA)</span>
                               <span className="text-[13px] font-mono font-bold text-[#1f3a2c] truncate block">
-                                {youPiSession?.vpa || ""}
+                                {upiSession?.vpa || ""}
                               </span>
                             </div>
                             <button
                               type="button"
-                              onClick={() => handleCopyVpa(youPiSession?.vpa || "")}
+                              onClick={() => handleCopyVpa(upiSession?.vpa || "")}
                               className="px-2.5 py-1 text-[11px] font-bold bg-white border border-[#e7e2d8] hover:border-[#1f3a2c] rounded flex items-center gap-1 transition-colors cursor-pointer shrink-0 text-[#202020]"
                             >
                               {copiedVpa ? (
@@ -909,14 +979,14 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                           <input
                             type="text"
                             maxLength={16}
-                            value={youPiUtr}
-                            onChange={(e) => setYouPiUtr(e.target.value)}
+                            value={upiUtr}
+                            onChange={(e) => setUpiUtr(e.target.value)}
                             placeholder="e.g. 428712345678"
                             className="flex-1 px-3.5 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13.5px] font-mono bg-white outline-none"
                           />
                           <button
                             type="submit"
-                            disabled={isVerifyingUtr || youPiUtr.trim().length < 8}
+                            disabled={isVerifyingUtr || upiUtr.trim().length < 8}
                             className="bg-[#02cb5a] hover:bg-[#02b851] disabled:opacity-50 text-[#1f3a2c] px-4 py-2 rounded-lg font-bold text-[13px] uppercase tracking-wider transition-colors cursor-pointer shrink-0 flex items-center gap-1.5 shadow-none"
                           >
                             {isVerifyingUtr ? (
@@ -1061,7 +1131,7 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                 <div className="flex items-center justify-between pt-1">
                   <span className="font-bold text-[#202020]">{paymentConfirmed ? "Amount Paid" : "Order Total"}</span>
                   <span className="font-bold text-[16px] text-[#1f3a2c]">
-                    ₹{finalTotal.toLocaleString("en-IN")}
+                    ₹{(confirmedTotal ?? (latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal)).toLocaleString("en-IN")}
                   </span>
                 </div>
 
@@ -1101,5 +1171,6 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
         </div>
       </div>
     </div>
+    </>
   );
 }

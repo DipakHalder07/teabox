@@ -396,7 +396,7 @@ export default function AdminOrdersPage() {
                 <div>
                   <span className="text-[#5c5a52] block text-[11px]">Method</span>
                   <span className="font-bold text-[#202020] uppercase">
-                    {activeOrder.paymentMethod === "upi" ? "UPI (YouPI-PG)" : "Cash on Delivery"}
+                    {activeOrder.paymentMethod === "upi" ? "UPI (TeaPay)" : "Cash on Delivery"}
                   </span>
                 </div>
                 {activeOrder.utrNumber && (

@@ -7,6 +7,7 @@ const eslintConfig = defineConfig([
   ...nextTs,
   // Override default ignores of eslint-config-next.
   globalIgnores([
+    "whatsapp-service/**",
     // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",

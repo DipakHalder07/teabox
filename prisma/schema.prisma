@@ -15,16 +15,16 @@ datasource db {
 // 1. ADMIN USER & AUTHENTICATION
 // ----------------------------------------------------
 model Admin {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  passwordHash  String
-  name          String
-  role          String    @default("ADMIN") // "SUPER_ADMIN" | "ADMIN" | "MANAGER"
-  avatar        String?
-  isActive      Boolean   @default(true)
-  lastLoginAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         String    @default("ADMIN") // "SUPER_ADMIN" | "ADMIN" | "MANAGER"
+  avatar       String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@map("admins")
 }
@@ -33,33 +33,33 @@ model Admin {
 // 2. STORE CUSTOMERS & ADDRESSES
 // ----------------------------------------------------
 model User {
-  id            String    @id @default(cuid())
-  name          String
-  email         String?   @unique
-  phone         String?   @unique
-  role          String    @default("CUSTOMER")
-  addresses     Address[]
-  orders        Order[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id        String    @id @default(cuid())
+  name      String
+  email     String?   @unique
+  phone     String?   @unique
+  role      String    @default("CUSTOMER")
+  addresses Address[]
+  orders    Order[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@map("users")
 }
 
 model Address {
-  id          String    @id @default(cuid())
-  userId      String?
-  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fullName    String
-  phone       String
-  address     String
-  city        String
-  state       String
-  pincode     String
-  landmark    String?
-  isDefault   Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName  String
+  phone     String
+  address   String
+  city      String
+  state     String
+  pincode   String
+  landmark  String?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("addresses")
 }
@@ -68,29 +68,29 @@ model Address {
 // 3. PRODUCTS & CATALOG
 // ----------------------------------------------------
 model Product {
-  id              String      @id
-  handle          String      @unique
-  title           String
-  subtitle        String?
-  description     String?
-  price           Int
-  originalPrice   Int?
-  rating          Float       @default(4.9)
-  reviewsCount    Int         @default(0)
-  badge           String?
-  image           String
-  secondaryImage  String?
-  galleryImages   String[]
-  weights         String[]
-  inStock         Boolean     @default(true)
-  stockQuantity   Int         @default(100)
-  category        String?
-  estate          String?
-  season          String?
-  caffeine        String?
-  orderItems      OrderItem[]
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id             String      @id
+  handle         String      @unique
+  title          String
+  subtitle       String?
+  description    String?
+  price          Int
+  originalPrice  Int?
+  rating         Float       @default(4.9)
+  reviewsCount   Int         @default(0)
+  badge          String?
+  image          String
+  secondaryImage String?
+  galleryImages  String[]
+  weights        String[]
+  inStock        Boolean     @default(true)
+  stockQuantity  Int         @default(100)
+  category       String?
+  estate         String?
+  season         String?
+  caffeine       String?
+  orderItems     OrderItem[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   @@map("products")
 }
@@ -99,50 +99,51 @@ model Product {
 // 4. ORDERS & FULFILLMENT
 // ----------------------------------------------------
 model Order {
-  id              String          @id // e.g. TBX-2026-87421
-  orderNumber     String          @unique
-  customerName    String
-  customerPhone   String
-  customerEmail   String?
-  address         String
-  city            String
-  state           String
-  pincode         String
-  landmark        String?
-  subtotal        Int
-  discountAmount  Int             @default(0)
-  couponCode      String?
-  shippingFee     Int             @default(0)
-  codFee          Int             @default(0)
-  totalAmount     Int
-  paymentMethod   String          // "upi" | "cod"
-  paymentStatus   String          // "PAID" | "PENDING" | "FAILED"
-  orderStatus     String          @default("PROCESSING") // "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED"
-  trackingNumber  String?
-  trackingUrl     String?
-  utrNumber       String?
-  notes           String?
-  userId          String?
-  user            User?           @relation(fields: [userId], references: [id])
-  items           OrderItem[]
-  payments        PaymentLog[]
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id             String          @id // e.g. TBX-2026-87421
+  orderNumber    String          @unique
+  customerName   String
+  customerPhone  String
+  customerEmail  String?
+  address        String
+  city           String
+  state          String
+  pincode        String
+  landmark       String?
+  subtotal       Int
+  discountAmount Int             @default(0)
+  couponCode     String?
+  shippingFee    Int             @default(0)
+  codFee         Int             @default(0)
+  totalAmount    Int
+  paymentMethod  String // "upi" | "cod"
+  paymentStatus  String // "PAID" | "PENDING" | "FAILED"
+  orderStatus    String          @default("PROCESSING") // "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED"
+  trackingNumber String?
+  trackingUrl    String?
+  utrNumber      String?
+  notes          String?
+  userId         String?
+  user           User?           @relation(fields: [userId], references: [id])
+  items          OrderItem[]
+  payments       PaymentLog[]
+  paymentSession PaymentSession?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@map("orders")
 }
 
 model OrderItem {
-  id          String    @id @default(cuid())
-  orderId     String
-  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId   String?
-  product     Product?  @relation(fields: [productId], references: [id])
-  title       String
-  weight      String?
-  price       Int
-  quantity    Int       @default(1)
-  image       String?
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+  title     String
+  weight    String?
+  price     Int
+  quantity  Int      @default(1)
+  image     String?
 
   @@map("order_items")
 }
@@ -151,17 +152,121 @@ model OrderItem {
 // 5. PAYMENT TRANSACTIONS (YouPI-PG & COD)
 // ----------------------------------------------------
 model PaymentLog {
-  id            String    @id @default(cuid())
-  orderId       String
-  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  gateway       String    @default("YouPI-PG")
-  merchantVpa   String?
-  amount        Int
-  utr           String?
-  status        String    // "INITIATED" | "VERIFIED" | "PENDING" | "FAILED"
-  verifiedAt    DateTime?
-  rawResponse   Json?
-  createdAt     DateTime  @default(now())
+  id          String    @id @default(cuid())
+  orderId     String
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  gateway     String    @default("YouPI-PG")
+  merchantVpa String?
+  amount      Int
+  utr         String?
+  status      String // "INITIATED" | "VERIFIED" | "PENDING" | "FAILED"
+  verifiedAt  DateTime?
+  rawResponse Json?
+  createdAt   DateTime  @default(now())
 
   @@map("payment_logs")
+}
+
+// ----------------------------------------------------
+// 6. TEAPAY: NATIVE UPI GATEWAY
+// Each checkout gets a unique payable amount (order total minus 1-99 paise), so an
+// incoming bank credit identifies exactly one checkout. The order is created only
+// once the money is seen (or the admin confirms it).
+// ----------------------------------------------------
+model PaymentSession {
+  id              String        @id @default(cuid())
+  orderNumber     String        @unique
+  orderDraft      Json // validated, server-priced order waiting for payment
+  orderId         String?       @unique
+  order           Order?        @relation(fields: [orderId], references: [id])
+  upiId           String
+  payeeName       String
+  orderPaise      Int // order total
+  payPaise        Int // exact amount the customer pays
+  activeKey       String?       @unique // "<upiId>:<payPaise>" while a credit may still match
+  status          String        @default("PENDING") // PENDING | VERIFYING | PAID | EXPIRED | CANCELLED
+  customerPhone   String
+  phoneVerifiedAt DateTime?
+  customerUtr     String? // typed by the customer, unverified
+  utr             String? // from the matched bank credit
+  paidVia         String? // credit source, or MANUAL
+  adminNotifiedAt DateTime? // WhatsApp alert with the review link was sent to the shop
+  expiresAt       DateTime
+  matchUntil      DateTime // late payments still match until here
+  paidAt          DateTime?
+  credits         CreditEvent[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([status, createdAt])
+  @@map("payment_sessions")
+}
+
+model CreditEvent {
+  id          String          @id @default(cuid())
+  source      String // ANDROID_SMS | ANDROID_NOTIFICATION | GMAIL | MANUAL
+  amountPaise Int
+  utr         String?
+  payerVpa    String?
+  sender      String?
+  rawText     String
+  dedupeKey   String          @unique
+  observedAt  DateTime
+  deviceId    String?
+  sessionId   String?
+  session     PaymentSession? @relation(fields: [sessionId], references: [id])
+  matchedAt   DateTime?
+  createdAt   DateTime        @default(now())
+
+  @@index([amountPaise, observedAt])
+  @@index([sessionId])
+  @@map("credit_events")
+}
+
+model ObserverDevice {
+  id              String    @id @default(cuid())
+  name            String
+  model           String?
+  signingKey      String
+  isActive        Boolean   @default(true)
+  lastHeartbeatAt DateTime?
+  lastEventAt     DateTime?
+  lastTestAt      DateTime? // the app's "Dispatch Test Bank Credit SMS" button
+  batteryPercent  Int?
+  createdAt       DateTime  @default(now())
+
+  @@map("observer_devices")
+}
+
+model PairingToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@map("pairing_tokens")
+}
+
+model OtpChallenge {
+  id         String    @id @default(cuid())
+  phone      String
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  verifiedAt DateTime?
+  ip         String?
+  createdAt  DateTime  @default(now())
+
+  @@index([phone, createdAt])
+  @@index([ip, createdAt])
+  @@map("otp_challenges")
+}
+
+model GatewaySetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("gateway_settings")
 }

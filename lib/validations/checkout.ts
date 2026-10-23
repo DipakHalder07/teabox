@@ -101,8 +101,6 @@ export const orderCreationSchema = z.object({
     .enum(["PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"])
     .default("PROCESSING"),
   utrNumber: z.string().nullable().optional(),
-  // YouPI-PG payment session id; the server confirms it with the gateway
-  paymentId: z.string().max(64).nullable().optional(),
   notes: z.string().nullable().optional(),
   items: z.array(
     z.object({
@@ -117,3 +115,20 @@ export const orderCreationSchema = z.object({
 });
 
 export type OrderCreationData = z.infer<typeof orderCreationSchema>;
+
+// UPI checkout (TeaPay): the server prices the order, so totals are not accepted from the browser.
+export const paymentStartSchema = orderCreationSchema.pick({
+  customerName: true,
+  customerPhone: true,
+  customerEmail: true,
+  address: true,
+  city: true,
+  state: true,
+  pincode: true,
+  landmark: true,
+  couponCode: true,
+  notes: true,
+  items: true,
+});
+
+export type PaymentStartData = z.infer<typeof paymentStartSchema>;

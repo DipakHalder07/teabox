@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createYouPiPayment } from "@/lib/youpi";
+import { createManualUpiPayment } from "@/lib/manualUpi";
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,12 +18,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
 
-    const session = await createYouPiPayment({
-      orderId,
-      amount: numericAmount,
-      customer,
-      note,
-    });
+    // Manual UPI fallback (the TeaPay gateway is used when the database is available).
+    const session = await createManualUpiPayment({ orderId, amount: numericAmount, note });
 
     return NextResponse.json({
       status: "success",

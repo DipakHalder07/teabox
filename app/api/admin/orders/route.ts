@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllOrders, saveOrder, getOrderById, StoredOrderData } from "@/lib/ordersDb";
-import { PRODUCTS } from "@/data/products";
+import { priceOrder } from "@/lib/orderPricing";
 import { verifyAdminRequest } from "@/lib/auth";
 import { orderCreationSchema, cleanIndianPhone } from "@/lib/validations/checkout";
 import { sendOrderConfirmationEmail } from "@/lib/email";
-import { getPaymentStatus } from "@/lib/youpi";
-import { getGatewayPayment, isGatewayConfigured } from "@/lib/youpiGateway";
+import { getSubmittedUtr } from "@/lib/manualUpi";
 
 export async function GET(req: NextRequest) {
   try {
@@ -85,94 +84,22 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 2. Authoritative Price & Line Item Verification from Catalog
-    const validatedItems = body.items.map((item) => {
-      const found = PRODUCTS.find(
-        (p) =>
-          p.id === item.productId ||
-          p.handle === item.productId ||
-          (item.productId && item.productId.startsWith(p.id))
-      );
+    // 2. Authoritative prices, coupon, shipping and COD fee (lib/orderPricing)
+    const priced = priceOrder(body);
+    const validatedItems = priced.items;
+    const authoritativeSubtotal = priced.subtotal;
+    const authoritativeDiscount = priced.discountAmount;
+    const authoritativeShipping = priced.shippingFee;
+    const authoritativeCod = priced.codFee;
+    const authoritativeTotal = priced.totalAmount;
 
-      const authoritativePrice = found
-        ? found.price
-        : Math.max(1, Math.round(item.price));
-      const validQuantity = Math.max(1, Math.floor(item.quantity));
-
-      return {
-        ...item,
-        price: authoritativePrice,
-        quantity: validQuantity,
-      };
-    });
-
-    const authoritativeSubtotal = validatedItems.reduce(
-      (sum, it) => sum + it.price * it.quantity,
-      0
-    );
-
-    // 3. Authoritative Coupon Discount Calculation
-    let authoritativeDiscount = 0;
-    if (body.couponCode) {
-      const code = body.couponCode.trim().toUpperCase();
-      if (code === "WELCOME10" || code === "TEA10") {
-        authoritativeDiscount = Math.round(authoritativeSubtotal * 0.1);
-      } else if (code === "FIRSTTEA") {
-        authoritativeDiscount = Math.min(150, authoritativeSubtotal);
-      }
-    }
-
-    // 4. Authoritative Shipping & COD Fees
-    const authoritativeShipping = authoritativeSubtotal >= 399 ? 0 : 50;
-    const authoritativeCod = body.paymentMethod === "cod" ? 40 : 0;
-    const authoritativeTotal = Math.max(
-      0,
-      authoritativeSubtotal - authoritativeDiscount + authoritativeShipping + authoritativeCod
-    );
-
-    // 5. Payment status is decided here, never by the browser. A UPI order is PAID only when the
-    // YouPI gateway (asked directly, or via its signed webhook) confirms the right amount. A
-    // customer-typed UTR stays unverified (PENDING) until the admin reconciles it.
-    let paymentStatus: "PAID" | "PENDING" = "PENDING";
-    let utrNumber: string | null = null;
-    let notes = body.notes || null;
-    const addNote = (note: string) => {
-      notes = [notes, note].filter(Boolean).join(" | ");
-    };
-    if (body.paymentMethod === "upi") {
-      const payment = getPaymentStatus(body.orderNumber);
-
-      // Gateway checkout: ask YouPI directly (server-to-server) instead of relying on memory.
-      let gatewayDecided = false;
-      if (body.paymentId && isGatewayConfigured()) {
-        try {
-          const gateway = await getGatewayPayment(body.paymentId);
-          if (gateway.orderId === body.orderNumber && gateway.status === "SUCCESS") {
-            gatewayDecided = true;
-            const paid = Number(gateway.amountPaise) / 100;
-            utrNumber = (payment.status === "COMPLETED" && payment.utr) || null;
-            if (Math.abs(paid - authoritativeTotal) < 1) {
-              paymentStatus = "PAID";
-            } else {
-              addNote(`Payment amount mismatch: received ₹${paid}, order total ₹${authoritativeTotal}`);
-            }
-          }
-        } catch (err) {
-          console.warn("[Orders] YouPI payment check failed:", err);
-        }
-      }
-
-      if (!gatewayDecided && payment.status === "COMPLETED") {
-        utrNumber = payment.utr || null;
-        if (Math.abs((payment.amount ?? 0) - authoritativeTotal) < 1) {
-          paymentStatus = "PAID";
-        } else {
-          addNote(`Payment amount mismatch: received ₹${payment.amount}, order total ₹${authoritativeTotal}`);
-        }
-      } else if (!gatewayDecided) {
-        utrNumber = (payment.status === "PENDING" && payment.submittedUtr) || body.utrNumber || null;
-      }
-    }
+    // 3. Payment status is decided here, never by the browser. This route takes COD orders and
+    // the manual-UPI fallback; a customer-typed UTR stays PENDING until the admin reconciles it.
+    // (Gateway UPI orders are created by lib/gateway when the money arrives.)
+    const paymentStatus = "PENDING" as const;
+    const notes = body.notes || null;
+    const utrNumber =
+      body.paymentMethod === "upi" ? getSubmittedUtr(body.orderNumber) || body.utrNumber || null : null;
 
     const saved = await saveOrder({
       id: body.orderNumber,

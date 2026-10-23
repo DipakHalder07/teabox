@@ -383,7 +383,7 @@ function OrderTrackingContent() {
                 <div className="flex justify-between">
                   <span className="text-[#5c5a52]">Method:</span>
                   <span className="font-bold text-[#202020] uppercase">
-                    {order.paymentMethod === "upi" ? "UPI (YouPI Gateway)" : "Cash On Delivery"}
+                    {order.paymentMethod === "upi" ? "UPI" : "Cash On Delivery"}
                   </span>
                 </div>
                 <div className="flex justify-between">

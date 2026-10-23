@@ -83,7 +83,7 @@ export default function AdminPaymentsPage() {
             UPI &amp; Payment Transactions
           </h1>
           <p className="text-[13.5px] text-[#5c5a52]">
-            Audit logs for direct-to-bank YouPI-PG transfers and Cash on Delivery orders.
+            Audit logs for direct-to-bank UPI transfers (TeaPay) and Cash on Delivery orders.
           </p>
         </div>
 
@@ -104,7 +104,7 @@ export default function AdminPaymentsPage() {
           </span>
           <div className="flex items-center justify-between">
             <span className="font-mono font-bold text-[15px] text-[#1f3a2c]">
-              {merchantVpa || "Not configured (set YOUPI_MERCHANT_VPA)"}
+              {merchantVpa || "Not configured (set UPI_ID)"}
             </span>
             <button
               onClick={handleCopyVpa}
@@ -120,7 +120,7 @@ export default function AdminPaymentsPage() {
             Gateway Engine
           </span>
           <div className="flex items-center gap-2">
-            <span className="font-bold text-[15px] text-[#202020]">YouPI-PG Native</span>
+            <span className="font-bold text-[15px] text-[#202020]">TeaPay (built in)</span>
             <span className="bg-[#02cb5a]/20 text-[#016c2f] text-[10px] font-bold px-2 py-0.5 rounded">
               Active
             </span>

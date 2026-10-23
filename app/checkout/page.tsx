@@ -14,7 +14,6 @@ import {
   Check,
   ShieldCheck,
   Truck,
-  QrCode,
   Banknote,
   Sparkles,
   Copy,
@@ -33,32 +32,19 @@ import {
   CheckoutShippingFormData,
   cleanIndianPhone,
 } from "@/lib/validations/checkout";
-import YouPiGatewayPanel, {
-  cancelYouPiGatewaySession,
-  GatewayHealthInfo,
-} from "@/components/YouPiGatewayPanel";
+import TeaPayPanel, { cancelTeaPaySession, PaymentLeaveDialog, TeaPaySessionView } from "@/components/TeaPayPanel";
 
-// "gateway": YouPI-PG flow (WhatsApp OTP, auto-confirm). "manual": shop QR + typed UTR.
-interface YouPiSessionData {
-  mode: "gateway" | "manual";
-  paymentId: string;
-  orderId: string;
-  amount: number;
-  currency: string;
+// "native": the shop's own UPI gateway (TeaPay). "manual": shop QR + typed UTR (used without a database).
+interface UpiSessionData extends Partial<Omit<TeaPaySessionView, "status">> {
+  mode: "native" | "manual";
+  status: string;
+  paymentId?: string;
+  orderId?: string;
+  amount?: number;
+  currency?: string;
   vpa?: string;
   merchantName?: string;
-  upiUri?: string;
-  qrCodeDataUrl?: string;
-  deepLinks?: {
-    gpay: string;
-    phonepe: string;
-    paytm: string;
-    cred: string;
-    generic: string;
-  };
   expiresAt?: string;
-  health?: GatewayHealthInfo | null;
-  status: string;
 }
 
 export default function CheckoutPage() {
@@ -76,22 +62,24 @@ export default function CheckoutPage() {
   } | null>(null);
   const [couponError, setCouponError] = useState("");
 
-  // Payment method (UPI via YouPI-PG or Cash on Delivery)
+  // Payment method (UPI via TeaPay or Cash on Delivery)
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "cod">("upi");
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderId, setOrderId] = useState("");
 
-  // YouPI-PG Gateway State
-  const [youPiSession, setYouPiSession] = useState<YouPiSessionData | null>(null);
-  const [isCreatingYouPi, setIsCreatingYouPi] = useState(false);
-  const [youPiUtr, setYouPiUtr] = useState("");
+  // UPI payment state
+  const [upiSession, setUpiSession] = useState<UpiSessionData | null>(null);
+  const [isCreatingUpi, setIsCreatingUpi] = useState(false);
+  const [upiUtr, setUpiUtr] = useState("");
   const [confirmedUtr, setConfirmedUtr] = useState("");
   const [utrError, setUtrError] = useState("");
   const [isVerifyingUtr, setIsVerifyingUtr] = useState(false);
-  // paymentConfirmed: the gateway's signed webhook confirmed the money. utrSubmitted: customer typed a UTR (unverified).
+  // paymentConfirmed: the bank credit was matched (the order was created on the server). utrSubmitted: manual-UPI UTR, unverified.
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [utrSubmitted, setUtrSubmitted] = useState(false);
   const persistOrderRef = useRef<(utr: string | null) => Promise<void>>(async () => {});
+  // Leaving while the UPI payment is open asks first (PaymentLeaveDialog).
+  const [leaveAction, setLeaveAction] = useState<null | (() => void)>(null);
   const [copiedVpa, setCopiedVpa] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState(600); // 10 minutes
 
@@ -209,10 +197,58 @@ export default function CheckoutPage() {
   const codFee = paymentMethod === "cod" ? 40 : 0;
   const finalTotal = Math.max(0, subtotal - discountAmount + shippingFee + codFee);
 
-  // Initialize YouPI Payment Session
-  const initYouPiSession = async (currentOrderId: string, amountToPay: number) => {
-    setIsCreatingYouPi(true);
+  const [confirmedTotal, setConfirmedTotal] = useState<number | null>(null);
+  const latestTotalRef = useRef(finalTotal);
+  useEffect(() => {
+    if (finalTotal > 0 && cartItems.length > 0) {
+      latestTotalRef.current = finalTotal;
+    }
+  }, [finalTotal, cartItems.length]);
+
+  // Starts the UPI step: the shop's own gateway first, manual UPI if it is unavailable.
+  const initUpiSession = async (currentOrderId: string, amountToPay: number) => {
+    setIsCreatingUpi(true);
     try {
+      const startRes = await fetch("/api/pay/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerName: formValues.fullName,
+          customerPhone: formValues.phone,
+          customerEmail: formValues.email || null,
+          address: formValues.address,
+          city: formValues.city,
+          state: formValues.state,
+          pincode: formValues.pincode,
+          landmark: formValues.landmark || null,
+          couponCode: appliedCoupon?.code || null,
+          items: cartItems.map((item) => ({
+            productId: item.id,
+            title: item.title,
+            weight: item.weight,
+            price: item.price,
+            quantity: item.quantity,
+            image: item.image,
+          })),
+        }),
+      });
+      const started = await startRes.json().catch(() => ({}));
+      if (startRes.ok) {
+        setUpiSession({ mode: "native", ...started });
+        setOrderId(started.orderNumber);
+        if (typeof started.orderTotal === "number") {
+          setConfirmedTotal(started.orderTotal);
+        }
+        return;
+      }
+      if (started?.fallback !== "manual") {
+        toast.error("UPI unavailable", {
+          description: started?.error || "Please try again or choose Cash on Delivery.",
+        });
+        return;
+      }
+
+      // Manual UPI fallback (no database)
       const res = await fetch("/api/payments/youpi/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -228,13 +264,13 @@ export default function CheckoutPage() {
       });
       const data = await res.json();
       if (data?.data) {
-        setYouPiSession(data.data);
+        setUpiSession(data.data);
         setCountdownSeconds(600);
       }
     } catch (err) {
-      console.error("Failed to initialize YouPI session:", err);
+      console.error("Failed to start UPI payment:", err);
     } finally {
-      setIsCreatingYouPi(false);
+      setIsCreatingUpi(false);
     }
   };
 
@@ -243,16 +279,16 @@ export default function CheckoutPage() {
     const generatedId = orderId || `TBX-2026-${Math.floor(10000 + Math.random() * 90000)}`;
     setOrderId(generatedId);
     setStep(2);
-    initYouPiSession(generatedId, finalTotal);
+    initUpiSession(generatedId, finalTotal);
     toast.success("Address Saved", {
       description: "Proceed to payment selection",
     });
   };
 
-  // Poll for YouPI payment confirmation
+  // Manual UPI: poll payment status
   useEffect(() => {
     if (step !== 2 || paymentMethod !== "upi" || !orderId) return;
-    if (youPiSession?.mode === "gateway") return; // the gateway panel polls YouPI itself
+    if (upiSession?.mode === "native") return; // TeaPayPanel watches the payment itself
 
     let done = false;
     const interval = setInterval(async () => {
@@ -266,6 +302,8 @@ export default function CheckoutPage() {
           clearInterval(interval);
           if (data?.utr) setConfirmedUtr(data.utr);
           setPaymentConfirmed(true);
+          const currentTotal = latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal;
+          setConfirmedTotal(currentTotal);
           await persistOrderRef.current(data?.utr || null);
           setIsProcessing(false);
           setStep(3);
@@ -278,9 +316,9 @@ export default function CheckoutPage() {
     }, 3500);
 
     return () => clearInterval(interval);
-  }, [step, paymentMethod, orderId, clearCart, youPiSession?.mode]);
+  }, [step, paymentMethod, orderId, clearCart, upiSession?.mode]);
 
-  // Countdown timer for YouPI dynamic QR
+  // Countdown timer for the manual-UPI QR
   useEffect(() => {
     if (step !== 2 || paymentMethod !== "upi") return;
     if (countdownSeconds <= 0) return;
@@ -302,7 +340,7 @@ export default function CheckoutPage() {
   const handleVerifyUtr = async (e: React.FormEvent) => {
     e.preventDefault();
     setUtrError("");
-    const clean = youPiUtr.trim().replace(/\D/g, "");
+    const clean = upiUtr.trim().replace(/\D/g, "");
     if (clean.length < 12) {
       setUtrError(
         "Please enter a valid 12-digit UPI UTR / Ref Number from your payment app receipt."
@@ -365,7 +403,6 @@ export default function CheckoutPage() {
           totalAmount: finalTotal,
           paymentMethod,
           utrNumber: paymentMethod === "upi" ? utr : null,
-          paymentId: paymentMethod === "upi" && youPiSession?.mode === "gateway" ? youPiSession.paymentId : null,
           items: cartItems.map((item) => ({
             productId: item.id,
             title: item.title,
@@ -384,31 +421,40 @@ export default function CheckoutPage() {
     persistOrderRef.current = persistOrder;
   });
 
-  // YouPI confirmed the money: save the order (the server re-checks with YouPI) and finish.
-  const handleGatewayPaid = async () => {
+  // The bank credit was matched and the server created the order: show the confirmation.
+  const handleUpiPaid = (view: TeaPaySessionView) => {
     setPaymentConfirmed(true);
-    setIsProcessing(true);
-    await persistOrder(null);
-    setIsProcessing(false);
+    if (view.utr) setConfirmedUtr(view.utr);
+    setOrderId(view.orderNumber);
+    const verifiedTotal = view.orderTotal || (latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal);
+    setConfirmedTotal(verifiedTotal);
     setStep(3);
     clearCart();
     toast.success("UPI Payment Confirmed!", {
-      description: `Order #${orderId} verified successfully.`,
+      description: `Order #${view.orderNumber} verified successfully.`,
     });
   };
 
-  // A gateway session belongs to one order number, so a retry starts under a new one.
-  const restartYouPiSession = () => {
+  const paymentInProgress =
+    step === 2 && paymentMethod === "upi" && upiSession?.mode === "native" && !paymentConfirmed;
+  const guardLeave = (proceed: () => void) => {
+    if (paymentInProgress) setLeaveAction(() => proceed);
+    else proceed();
+  };
+
+  // Start over with a fresh payment (and order number).
+  const restartUpiSession = () => {
+    if (upiSession?.mode === "native" && upiSession.sessionId) cancelTeaPaySession(upiSession.sessionId);
     const newOrderId = `TB-${Math.floor(100000 + Math.random() * 900000)}`;
     setOrderId(newOrderId);
-    setYouPiSession(null);
-    initYouPiSession(newOrderId, finalTotal);
+    setUpiSession(null);
+    initUpiSession(newOrderId, finalTotal);
   };
 
   const handleSelectCod = () => {
-    if (youPiSession?.mode === "gateway" && !paymentConfirmed) {
-      cancelYouPiGatewaySession(youPiSession.paymentId);
-      setYouPiSession(null);
+    if (upiSession?.mode === "native" && !paymentConfirmed) {
+      if (upiSession.sessionId) cancelTeaPaySession(upiSession.sessionId);
+      setUpiSession(null);
       setOrderId(`TB-${Math.floor(100000 + Math.random() * 900000)}`);
     }
     setPaymentMethod("cod");
@@ -417,7 +463,7 @@ export default function CheckoutPage() {
   const handlePlaceOrder = async () => {
     if (paymentMethod === "upi" && !paymentConfirmed && !utrSubmitted) {
       const msg =
-        youPiSession?.mode === "gateway"
+        upiSession?.mode === "native"
           ? "Please complete the UPI payment above. Your order is placed automatically once it is received."
           : "Please pay using the QR / UPI app, then enter your 12-digit UTR to place the order.";
       setUtrError(msg);
@@ -425,6 +471,8 @@ export default function CheckoutPage() {
       return;
     }
 
+    const currentTotal = latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal;
+    setConfirmedTotal(currentTotal);
     setIsProcessing(true);
     await persistOrder(confirmedUtr || null);
 
@@ -442,20 +490,34 @@ export default function CheckoutPage() {
   const handleStartNewOrder = () => {
     setStep(1);
     setOrderId("");
-    setYouPiSession(null);
-    setYouPiUtr("");
+    setUpiSession(null);
+    setUpiUtr("");
     setConfirmedUtr("");
     setUtrError("");
     setPaymentConfirmed(false);
     setUtrSubmitted(false);
     setIsProcessing(false);
     setPaymentMethod("upi");
+    setConfirmedTotal(null);
     router.push("/collections/all");
   };
 
   return (
     <div className="min-h-screen bg-[#fcfbf9] text-[#202020] flex flex-col justify-between">
       <div ref={pageTopRef} />
+      {leaveAction && upiSession?.sessionId && (
+        <PaymentLeaveDialog
+          sessionId={upiSession.sessionId}
+          payAmount={upiSession.payAmount || String(finalTotal)}
+          onStay={() => setLeaveAction(null)}
+          onLeave={() => {
+            const proceed = leaveAction;
+            setLeaveAction(null);
+            setUpiSession(null);
+            proceed();
+          }}
+        />
+      )}
 
       {/* Top Luxury Checkout Header */}
       <header className="bg-[#1f3a2c] text-white py-4 px-4 sm:px-8 border-b border-[#2d4d3d] sticky top-0 z-30 shadow-sm">
@@ -477,6 +539,12 @@ export default function CheckoutPage() {
             </span>
             <Link
               href="/collections/all"
+              onClick={(e) => {
+                if (paymentInProgress) {
+                  e.preventDefault();
+                  guardLeave(() => router.push("/collections/all"));
+                }
+              }}
               className="text-white hover:text-[#02cb5a] text-[13px] flex items-center gap-1 font-medium transition-colors"
             >
               <ArrowLeft size={14} />
@@ -494,7 +562,7 @@ export default function CheckoutPage() {
               className={`flex items-center gap-2 cursor-pointer ${
                 step === 1 ? "text-[#016c2f]" : "text-[#202020]"
               }`}
-              onClick={() => setStep(1)}
+              onClick={() => guardLeave(() => setStep(1))}
             >
               <span
                 className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold ${
@@ -631,7 +699,7 @@ export default function CheckoutPage() {
               <div className="flex items-center justify-between pt-1">
                 <span className="font-bold text-[#202020]">{paymentMethod === "upi" && paymentConfirmed ? "Amount Paid" : "Order Total"}</span>
                 <span className="font-bold text-[18px] text-[#1f3a2c]">
-                  ₹{finalTotal.toLocaleString("en-IN")}
+                  ₹{(confirmedTotal ?? (latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal)).toLocaleString("en-IN")}
                 </span>
               </div>
 
@@ -888,7 +956,7 @@ export default function CheckoutPage() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => setStep(1)}
+                        onClick={() => guardLeave(() => setStep(1))}
                         className="text-[#016c2f] font-bold underline hover:opacity-80 cursor-pointer"
                       >
                         Edit Address
@@ -901,12 +969,12 @@ export default function CheckoutPage() {
                         Select Payment Method
                       </h4>
 
-                      {/* 1. UPI Powered by YouPI-PG */}
+                      {/* 1. UPI (TeaPay) */}
                       <div
                         onClick={() => {
                           setPaymentMethod("upi");
-                          if (!youPiSession && orderId) {
-                            initYouPiSession(orderId, finalTotal);
+                          if (!upiSession && orderId) {
+                            initUpiSession(orderId, finalTotal);
                           }
                         }}
                         className={`border-2 rounded-xl p-4 transition-all cursor-pointer ${
@@ -923,9 +991,12 @@ export default function CheckoutPage() {
                               )}
                             </div>
                             <div className="flex items-center gap-2">
-                              <QrCode size={19} className="text-[#016c2f]" />
-                              <span className="font-bold text-[15px] text-[#202020]">
-                                UPI (Google Pay, PhonePe, Paytm &amp; QR)
+                              <Image src="/assets/upi/upi.svg" alt="UPI" width={44} height={16} className="h-4 w-auto" />
+                              <span className="font-bold text-[15px] text-[#202020]">Pay by UPI</span>
+                              <span className="hidden sm:flex items-center gap-1 ml-1">
+                                {["gpay", "phonepe", "paytm", "cred", "bhim"].map((app) => (
+                                  <Image key={app} src={`/assets/upi/${app}.png`} alt="" width={20} height={20} className="rounded" />
+                                ))}
                               </span>
                             </div>
                           </div>
@@ -934,25 +1005,22 @@ export default function CheckoutPage() {
                           </span>
                         </div>
 
-                        {paymentMethod === "upi" && youPiSession?.mode === "gateway" && (
+                        {paymentMethod === "upi" && upiSession?.mode === "native" && (
                           <div
                             className="mt-4 pt-4 border-t border-[#e7e2d8]"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <YouPiGatewayPanel
-                              key={youPiSession.paymentId}
-                              paymentId={youPiSession.paymentId}
-                              phone={cleanIndianPhone(formValues.phone || "")}
-                              name={formValues.fullName || ""}
-                              amount={finalTotal}
-                              initialHealth={youPiSession.health}
-                              onPaid={handleGatewayPaid}
-                              onRetry={restartYouPiSession}
+                            <TeaPayPanel
+                              key={upiSession.sessionId}
+                              session={upiSession as TeaPaySessionView}
+                              onPaid={handleUpiPaid}
+                              onRestart={restartUpiSession}
+                              onBackPressed={() => guardLeave(() => window.history.go(-2))}
                             />
                           </div>
                         )}
 
-                        {paymentMethod === "upi" && youPiSession?.mode !== "gateway" && (
+                        {paymentMethod === "upi" && upiSession?.mode !== "native" && (
                           <div
                             className="mt-4 pt-4 border-t border-[#e7e2d8] space-y-4"
                             onClick={(e) => e.stopPropagation()}
@@ -962,14 +1030,14 @@ export default function CheckoutPage() {
                               {/* Dynamic QR Display */}
                               <div className="flex flex-col items-center text-center">
                                 <div className="relative w-44 h-44 bg-white p-2 rounded-xl border border-[#e7e2d8] shadow-sm flex items-center justify-center">
-                                  {isCreatingYouPi ? (
+                                  {isCreatingUpi ? (
                                     <div className="flex flex-col items-center gap-2 text-[12px] text-[#5c5a52]">
                                       <RefreshCw size={22} className="animate-spin text-[#016c2f]" />
                                       <span>Generating QR...</span>
                                     </div>
-                                  ) : youPiSession?.qrCodeDataUrl ? (
+                                  ) : upiSession?.qrCodeDataUrl ? (
                                     <img
-                                      src={youPiSession.qrCodeDataUrl}
+                                      src={upiSession.qrCodeDataUrl}
                                       alt="UPI QR Code"
                                       className="w-full h-full object-contain rounded"
                                     />
@@ -1005,26 +1073,26 @@ export default function CheckoutPage() {
                                       {
                                         name: "Google Pay",
                                         scheme:
-                                          youPiSession?.deepLinks?.gpay ||
-                                          youPiSession?.upiUri,
+                                          upiSession?.deepLinks?.gpay ||
+                                          upiSession?.upiUri,
                                       },
                                       {
                                         name: "PhonePe",
                                         scheme:
-                                          youPiSession?.deepLinks?.phonepe ||
-                                          youPiSession?.upiUri,
+                                          upiSession?.deepLinks?.phonepe ||
+                                          upiSession?.upiUri,
                                       },
                                       {
                                         name: "Paytm",
                                         scheme:
-                                          youPiSession?.deepLinks?.paytm ||
-                                          youPiSession?.upiUri,
+                                          upiSession?.deepLinks?.paytm ||
+                                          upiSession?.upiUri,
                                       },
                                       {
                                         name: "CRED UPI",
                                         scheme:
-                                          youPiSession?.deepLinks?.cred ||
-                                          youPiSession?.upiUri,
+                                          upiSession?.deepLinks?.cred ||
+                                          upiSession?.upiUri,
                                       },
                                     ].map((app) => (
                                       <a
@@ -1046,14 +1114,14 @@ export default function CheckoutPage() {
                                       Merchant UPI ID (VPA)
                                     </span>
                                     <span className="text-[13px] font-mono font-bold text-[#1f3a2c] truncate block">
-                                      {youPiSession?.vpa || ""}
+                                      {upiSession?.vpa || ""}
                                     </span>
                                   </div>
                                   <button
                                     type="button"
                                     onClick={() =>
                                       handleCopyVpa(
-                                        youPiSession?.vpa || ""
+                                        upiSession?.vpa || ""
                                       )
                                     }
                                     className="px-2.5 py-1 text-[11px] font-bold bg-white border border-[#e7e2d8] hover:border-[#1f3a2c] rounded flex items-center gap-1 transition-colors cursor-pointer shrink-0 text-[#202020]"
@@ -1089,14 +1157,14 @@ export default function CheckoutPage() {
                                 <input
                                   type="text"
                                   maxLength={16}
-                                  value={youPiUtr}
-                                  onChange={(e) => setYouPiUtr(e.target.value)}
+                                  value={upiUtr}
+                                  onChange={(e) => setUpiUtr(e.target.value)}
                                   placeholder="e.g. 428712345678"
                                   className="flex-1 px-3.5 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13.5px] font-mono bg-white outline-none"
                                 />
                                 <button
                                   type="submit"
-                                  disabled={isVerifyingUtr || youPiUtr.trim().length < 8}
+                                  disabled={isVerifyingUtr || upiUtr.trim().length < 8}
                                   className="bg-[#02cb5a] hover:bg-[#02b851] disabled:opacity-50 text-[#1f3a2c] px-4 py-2 rounded-lg font-bold text-[13px] uppercase tracking-wider transition-colors cursor-pointer shrink-0 flex items-center gap-1.5 shadow-none"
                                 >
                                   {isVerifyingUtr ? (
@@ -1204,7 +1272,8 @@ export default function CheckoutPage() {
                             src={item.image}
                             alt={item.title}
                             fill
-                            className="object-contain p-1"
+                            sizes="48px"
+                            className="object-cover"
                           />
                         </div>
                         <div className="min-w-0">

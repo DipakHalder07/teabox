@@ -200,7 +200,7 @@ export default function AdminOverviewPage() {
         {/* UPI Payments */}
         <div className="bg-white border border-[#e7e2d8] rounded-2xl p-5 shadow-2xs">
           <div className="flex items-center justify-between text-[#747576] mb-3">
-            <span className="text-[13px] font-semibold">UPI (YouPI-PG)</span>
+            <span className="text-[13px] font-semibold">UPI (TeaPay)</span>
             <div className="w-9 h-9 rounded-xl bg-[#02cb5a]/15 text-[#016c2f] flex items-center justify-center">
               <CreditCard size={19} />
             </div>

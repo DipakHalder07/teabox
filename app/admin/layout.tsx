@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import LivePaymentsWatcher from "@/components/admin/LivePaymentsWatcher";
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -208,6 +209,8 @@ export default function AdminLayout({
         )}
         {children}
       </main>
+      {/* Live UPI payments + alerts, on every admin page */}
+      {!loading && adminUser && <LivePaymentsWatcher />}
     </div>
   );
 }

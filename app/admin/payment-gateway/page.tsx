@@ -4,597 +4,911 @@ import React, { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import {
   RefreshCw,
-  ExternalLink,
-  Server,
   MessageCircle,
   Mail,
   Smartphone,
   Download,
-  Webhook,
-  Copy,
-  Check,
   CircleCheck,
   CircleX,
   TriangleAlert,
   QrCode,
   Send,
-  KeyRound,
+  Trash,
+  IndianRupee,
+  Clock,
 } from "lucide-react";
 
-interface GatewayStatus {
-  configured: {
-    gateway: boolean;
-    hub: boolean;
-    adminToken: boolean;
-    webhookSecret: boolean;
-    merchantVpa: boolean;
-  };
-  gateway: { url: string; reachable: boolean; latencyMs: number | null; error: string | null } | null;
-  observers: {
-    tier: string;
-    label: string;
-    isWorking: boolean;
-    reason: string | null;
-    sms: boolean;
-    gmail: boolean;
-  } | null;
+interface Overview {
+  toggles: { whatsapp: boolean; sms: boolean; gmail: boolean };
+  database: boolean;
+  databaseHost?: string | null;
+  databaseLocal?: boolean;
+  upi: { upiId: string | null; payeeName: string };
   whatsapp: {
-    status?: string;
-    isConnected?: boolean;
-    phoneNumber?: string | null;
-    qrCode?: string | null;
-    error?: string;
-  } | null;
-  receivingUpi: { upiId: string; payeeName: string } | null;
-  shopUpi: string | null;
-  youpiWebhookUrl: string | null;
-  androidPairing: {
-    serverUrl: string | null;
-    devices: Array<{ name: string; isActive: boolean; lastHeartbeatAt: string | null }>;
-  } | null;
-  apk: { available: boolean; sizeBytes?: number; sha256?: string };
-  hubUrl: string | null;
-  webhookUrl: string;
-  checkedAt: string;
+    provider: "qr" | "cloud" | null;
+    configured: boolean;
+    otpRequired: boolean;
+    service: { status: string; connected: boolean; phone: string | null; qrDataUrl: string | null; error?: string } | null;
+    alerts: { enabled: boolean; number: string };
+  };
+  cronConfigured: boolean;
+  publicBaseUrl: string;
+  apkUrl: string;
+  gmail?: { configured: boolean; connected: boolean; email: string | null; lastPollAt: string | null; lastError: string | null };
+  devices?: Array<{
+    id: string;
+    name: string;
+    model: string | null;
+    batteryPercent: number | null;
+    lastHeartbeatAt: string | null;
+    lastEventAt: string | null;
+    lastTestAt: string | null;
+    online: boolean;
+  }>;
+  phoneFeed?: Array<{ id: string; source: string; amount: string; utr: string | null; receivedAt: string; orderNumber: string | null }>;
+  sessions?: Array<{
+    id: string;
+    orderNumber: string;
+    status: string;
+    customerName: string;
+    customerPhone: string;
+    payAmount: string;
+    orderTotal: number;
+    customerUtr: string | null;
+    utr: string | null;
+    paidVia: string | null;
+    phoneVerified: boolean;
+    stage: string | null;
+    expiresAt: string;
+    createdAt: string;
+    paidAt: string | null;
+  }>;
+  unmatchedCredits?: Array<{
+    id: string;
+    source: string;
+    amount: string;
+    utr: string | null;
+    payerVpa: string | null;
+    sender: string | null;
+    text: string;
+    observedAt: string;
+  }>;
+  stats?: { paidToday: number; waiting: number };
+  serverNow?: string;
 }
 
-type Tone = "ok" | "warn" | "bad" | "off";
-
-const toneStyles: Record<Tone, string> = {
-  ok: "bg-[#02cb5a]/15 text-[#016c2f]",
-  warn: "bg-[#f5a623]/15 text-[#9a5b00]",
-  bad: "bg-[#e53935]/12 text-[#c62828]",
-  off: "bg-[#ece9e1] text-[#5c5a52]",
+const STATUS_STYLE: Record<string, string> = {
+  PAID: "bg-[#02cb5a]/15 text-[#016c2f]",
+  PENDING: "bg-[#f5a623]/15 text-[#9a5b00]",
+  VERIFYING: "bg-[#2563eb]/12 text-[#1d4ed8]",
+  EXPIRED: "bg-[#ece9e1] text-[#5c5a52]",
+  CANCELLED: "bg-[#ece9e1] text-[#5c5a52]",
 };
 
-function Badge({ tone, children }: { tone: Tone; children: React.ReactNode }) {
+const SOURCE_LABEL: Record<string, string> = {
+  ANDROID_SMS: "Phone SMS",
+  ANDROID_NOTIFICATION: "Phone app",
+  GMAIL: "Gmail",
+  MANUAL: "Admin",
+};
+
+function timeAgo(iso: string | null) {
+  if (!iso) return "never";
+  const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return new Date(iso).toLocaleDateString("en-IN");
+}
+
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`bg-white border border-[#e7e2d8] rounded-2xl p-5 shadow-2xs ${className}`}>{children}</div>;
+}
+
+function CardTitle({ icon: Icon, title, right }: { icon: React.ElementType; title: string; right?: React.ReactNode }) {
   return (
-    <span className={`text-[11px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${toneStyles[tone]}`}>
+    <div className="flex items-center justify-between gap-2 mb-3">
+      <div className="flex items-center gap-2">
+        <Icon size={18} className="text-[#016c2f]" />
+        <h2 className="font-bold text-[16px] text-[#1f3a2c]">{title}</h2>
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function Pill({ ok, children }: { ok: boolean; children: React.ReactNode }) {
+  return (
+    <span
+      className={`text-[11px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+        ok ? "bg-[#02cb5a]/15 text-[#016c2f]" : "bg-[#ece9e1] text-[#5c5a52]"
+      }`}
+    >
       {children}
     </span>
   );
 }
 
-function StatusCard({
-  icon: Icon,
-  title,
-  tone,
-  state,
-  detail,
-  action,
-}: {
-  icon: React.ElementType;
-  title: string;
-  tone: Tone;
-  state: string;
-  detail: React.ReactNode;
-  action?: React.ReactNode;
-}) {
+function Switch({ on, label, disabled, onChange }: { on: boolean; label: string; disabled?: boolean; onChange: (on: boolean) => void }) {
   return (
-    <div className="bg-white border border-[#e7e2d8] rounded-2xl p-4 shadow-2xs flex flex-col gap-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-[#f0f8f4] text-[#016c2f] flex items-center justify-center shrink-0">
-            <Icon size={17} />
-          </div>
-          <span className="font-bold text-[14px] text-[#202020]">{title}</span>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!on)}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-60 ${
+        on ? "bg-[#02cb5a]" : "bg-[#d6d2c8]"
+      }`}
+    >
+      <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${on ? "translate-x-[22px]" : "translate-x-[2px]"}`} />
+    </button>
+  );
+}
+
+type Act = (action: string, payload?: Record<string, unknown>, success?: string) => Promise<Record<string, unknown> | null>;
+
+/** Log the shop's WhatsApp in (scan QR / pairing code) and send a test. Works without the database. */
+function WhatsAppCard({ data, busy, act }: { data: Overview; busy: string; act: Act }) {
+  const [phone, setPhone] = useState("");
+  const [qr, setQr] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState("");
+  const wa = data.whatsapp;
+  const svc = wa.service;
+  const connected = wa.provider === "cloud" || Boolean(svc?.connected);
+  const shownQr = svc?.connected ? null : svc?.qrDataUrl || qr;
+
+  const getQr = async () => {
+    const r = await act("whatsapp-qr");
+    if (r) setQr((r.qrDataUrl as string) || null);
+  };
+  const getPairingCode = async () => {
+    const r = await act("whatsapp-pairing-code", { phone });
+    if (r?.code) setPairingCode(String(r.code));
+  };
+  const sendTest = async () => {
+    const r = await act("whatsapp-test", { phone });
+    if (r?.code) toast.success("Test code sent on WhatsApp", { description: `Code: ${r.code}` });
+  };
+
+  return (
+    <Card>
+      <CardTitle
+        icon={MessageCircle}
+        title="WhatsApp login (OTP)"
+        right={
+          <Switch
+            on={data.toggles.whatsapp}
+            label="WhatsApp login"
+            disabled={busy !== ""}
+            onChange={(on) => act("toggle", { key: "whatsapp", enabled: on }, on ? "WhatsApp login turned on" : "WhatsApp login turned off")}
+          />
+        }
+      />
+
+      {!data.toggles.whatsapp && (
+        <p className="text-[12.5px] text-[#5c5a52]">
+          <strong>Off.</strong> Customers go straight to the payment QR. Turn on to send them a WhatsApp code first:
+          you will scan a QR with your phone&apos;s WhatsApp once.
+        </p>
+      )}
+
+      {data.toggles.whatsapp && (
+        <div className="mb-3">
+          <Pill ok={connected}>{!wa.provider ? "Not set up" : connected ? "Connected" : svc?.status === "offline" ? "Service off" : "Waiting for scan"}</Pill>
         </div>
-        <Badge tone={tone}>{state}</Badge>
+      )}
+
+      {data.toggles.whatsapp && !wa.provider && (
+        <p className="text-[12.5px] text-[#5c5a52]">
+          Off: checkout goes straight to the payment QR. To turn on, run the WhatsApp service (
+          <code>npm run whatsapp</code>) and set <code>WHATSAPP_SERVICE_URL</code> and <code>WHATSAPP_SERVICE_TOKEN</code>.
+        </p>
+      )}
+
+      {data.toggles.whatsapp && wa.provider === "qr" && svc?.status === "offline" && (
+        <div className="text-[12.5px] text-[#5c5a52] space-y-1.5">
+          <p>
+            The WhatsApp service is not running, so customers skip the WhatsApp code for now. On this computer,
+            restart the shop with <code>npm run dev</code> (it starts WhatsApp too); online, start it on your
+            always-on server.
+          </p>
+          {svc.error && <p className="text-[11.5px] text-[#9a5b00]">{svc.error}</p>}
+        </div>
+      )}
+
+      {data.toggles.whatsapp && wa.provider === "qr" && svc && svc.status !== "offline" && !svc.connected && (
+        <div className="space-y-3">
+          <ol className="list-decimal pl-5 text-[12.5px] text-[#202020] space-y-0.5">
+            <li>On the phone whose WhatsApp will send the codes, open WhatsApp.</li>
+            <li>
+              Tap <strong>Settings → Linked devices → Link a device</strong>.
+            </li>
+            <li>Scan this QR. This card turns green in a few seconds.</li>
+          </ol>
+          <div className="flex items-center justify-center bg-[#fafafa] border border-[#e7e2d8] rounded-xl w-[232px] h-[232px] mx-auto">
+            {shownQr ? (
+              <img src={shownQr} alt="WhatsApp login QR" className="w-[220px] h-[220px] object-contain" />
+            ) : (
+              <span className="text-[12.5px] text-[#747576] text-center px-4">Preparing QR… tap “New QR” if it does not appear</span>
+            )}
+          </div>
+          <button onClick={getQr} disabled={busy !== ""} className={buttonDark}>
+            <QrCode size={14} /> New QR
+          </button>
+          <div className="border-t border-[#e7e2d8] pt-3 space-y-2">
+            <p className="text-[12px] text-[#5c5a52]">
+              <strong>Can&apos;t scan?</strong> WhatsApp → Linked devices → Link a device →{" "}
+              <strong>Link with phone number instead</strong>, then enter this code:
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="That phone's 10-digit number"
+                className="flex-1 min-w-0 px-3 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13px] outline-none"
+              />
+              <button onClick={getPairingCode} disabled={busy !== ""} className={buttonLight}>
+                Get code
+              </button>
+            </div>
+            {pairingCode && <div className="text-[24px] font-mono font-bold tracking-[0.15em] text-[#1f3a2c]">{pairingCode}</div>}
+          </div>
+          <p className="text-[11px] text-[#9a5b00]">
+            Uses WhatsApp Web linking (unofficial). Use a spare number if possible: WhatsApp may block numbers
+            that send automated messages.
+          </p>
+        </div>
+      )}
+
+      {data.toggles.whatsapp && connected && (
+        <div className="space-y-3">
+          <p className="text-[12.5px] text-[#5c5a52]">
+            {wa.provider === "qr" ? (
+              <>
+                Logged in as <strong>+{svc?.phone}</strong>. Customers get their checkout code from this WhatsApp.
+              </>
+            ) : (
+              "Codes are sent with the official WhatsApp Cloud API."
+            )}
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="10-digit number"
+              className="flex-1 min-w-0 px-3 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13px] outline-none"
+            />
+            <button onClick={sendTest} disabled={busy !== ""} className={buttonDark}>
+              <Send size={14} /> Test
+            </button>
+          </div>
+          {wa.provider === "qr" && <OrderAlerts data={data} busy={busy} act={act} />}
+          {wa.provider === "qr" && (
+            <button
+              onClick={() => window.confirm("Log out this WhatsApp? Customers will skip the code until you scan again.") && act("whatsapp-logout", {}, "WhatsApp logged out")}
+              disabled={busy !== ""}
+              className={buttonLight}
+            >
+              Log out
+            </button>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** WhatsApp alert to the shop for every new UPI order (with a link to confirm it). */
+function OrderAlerts({ data, busy, act }: { data: Overview; busy: string; act: Act }) {
+  const [number, setNumber] = useState(data.whatsapp.alerts.number);
+  const enabled = data.whatsapp.alerts.enabled;
+  const sender = (data.whatsapp.service?.phone || "").replace(/^91/, "");
+  const target = data.whatsapp.alerts.number || sender;
+  return (
+    <div className="border-t border-[#e7e2d8] pt-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[13px] font-semibold text-[#202020]">Send me each new order on WhatsApp</div>
+        <Switch
+          on={enabled}
+          label="Order alerts"
+          disabled={busy !== ""}
+          onChange={(on) => act("alerts", { enabled: on, number }, on ? "Order alerts on" : "Order alerts off")}
+        />
       </div>
-      <div className="text-[12.5px] text-[#5c5a52] leading-relaxed">{detail}</div>
-      {action && <div className="mt-auto pt-1">{action}</div>}
+      {enabled && (
+        <>
+          <div className="text-[13px] text-[#202020]">
+            Alerts go to <strong>+91 {target || "—"}</strong>
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="tel"
+              value={number}
+              onChange={(e) => setNumber(e.target.value)}
+              placeholder="WhatsApp number for alerts (10 digits)"
+              className="flex-1 min-w-0 px-3 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13px] outline-none"
+            />
+            <button onClick={() => act("alerts", { enabled: true, number }, "Alert number saved")} disabled={busy !== ""} className={buttonLight}>
+              Save
+            </button>
+          </div>
+          {target && target === sender && (
+            <p className="text-[11.5px] text-[#9a5b00] bg-[#fff8e6] rounded-lg px-2.5 py-1.5">
+              This is the same number that sends the messages, so alerts appear in your WhatsApp chat{" "}
+              <strong>“You” (Message yourself)</strong> without a notification sound. For a ringing alert, enter a
+              different number (e.g. your personal WhatsApp).
+            </p>
+          )}
+          <p className="text-[11.5px] text-[#747576]">
+            Each alert has the order, amount, 10-minute timer and a link to confirm it.
+          </p>
+        </>
+      )}
     </div>
   );
 }
 
-function HubLink({ hubUrl, section, label }: { hubUrl: string | null; section: string; label: string }) {
-  if (!hubUrl) {
-    return <span className="text-[12px] text-[#8e8d8a]">Set YOUPI_ADMIN_URL to get a direct link.</span>;
-  }
-  return (
-    <a
-      href={`${hubUrl}/#${section}`}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[#1f3a2c] border border-[#e7e2d8] hover:border-[#1f3a2c] rounded-lg px-3 py-1.5 transition-colors"
-    >
-      {label}
-      <ExternalLink size={13} />
-    </a>
-  );
-}
+const buttonDark =
+  "bg-[#1f3a2c] hover:bg-[#14281e] disabled:opacity-60 text-white px-3.5 py-2 rounded-lg font-bold text-[12.5px] inline-flex items-center gap-1.5 cursor-pointer";
+const buttonLight =
+  "bg-white border border-[#e7e2d8] hover:border-[#1f3a2c] disabled:opacity-60 text-[#202020] px-3.5 py-2 rounded-lg font-bold text-[12.5px] inline-flex items-center gap-1.5 cursor-pointer";
 
 export default function AdminPaymentGatewayPage() {
-  const [status, setStatus] = useState<GatewayStatus | null>(null);
+  const [data, setData] = useState<Overview | null>(null);
+  const [clockOffset, setClockOffset] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
-  const [waBusy, setWaBusy] = useState<"" | "qr" | "pairing-code" | "test">("");
-  const [waQr, setWaQr] = useState<string | null>(null);
-  const [waPhone, setWaPhone] = useState("");
-  const [pairingCode, setPairingCode] = useState("");
-  const [waError, setWaError] = useState("");
+  const [busy, setBusy] = useState("");
+  const [pairing, setPairing] = useState<{
+    qrDataUrl: string;
+    expiresAt: string;
+    serverUrl: string;
+    enrollmentToken: string;
+  } | null>(null);
+  const [assignTo, setAssignTo] = useState<Record<string, string>>({});
 
-  const fetchStatus = useCallback(async () => {
+  const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/youpi/status");
-      if (res.ok) setStatus(await res.json());
+      const res = await fetch("/api/admin/gateway/overview");
+      if (res.ok) {
+        const json: Overview = await res.json();
+        setData(json);
+        // Timers follow the server clock, so they match the customer's to the second.
+        if (json.serverNow) setClockOffset(new Date(json.serverNow).getTime() - Date.now());
+      }
     } catch (err) {
-      console.error("Failed to load gateway status:", err);
+      console.error("Failed to load gateway overview:", err);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Refresh faster while WhatsApp waits to be scanned, so the page flips to Connected quickly.
-  const waitingForWhatsApp = Boolean(status?.whatsapp && !status.whatsapp.error && !status.whatsapp.isConnected);
   useEffect(() => {
-    const first = setTimeout(fetchStatus, 0);
-    const interval = setInterval(fetchStatus, waitingForWhatsApp ? 5000 : 15000);
+    const first = setTimeout(() => {
+      load();
+      // Result of "Sign in with Google" (redirected back here)
+      const params = new URLSearchParams(window.location.search);
+      const gmail = params.get("gmail");
+      if (gmail === "connected") toast.success("Gmail connected", { description: params.get("email") || undefined });
+      if (gmail === "error") toast.error("Gmail was not connected", { description: params.get("message") || undefined });
+      if (gmail === "not-configured") toast.error("Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET first");
+      if (gmail) window.history.replaceState(null, "", window.location.pathname);
+    }, 0);
+    return () => clearTimeout(first);
+  }, [load]);
+
+  // Refresh every 10 s, or every 3 s while WhatsApp waits to be scanned or customers are paying.
+  const waitingForScan = Boolean(data?.whatsapp.service && !data.whatsapp.service.connected && data.whatsapp.service.status !== "offline");
+  const customersPaying = (data?.stats?.waiting ?? 0) > 0;
+  useEffect(() => {
+    const interval = setInterval(load, waitingForScan || customersPaying ? 3000 : 10000);
+    return () => clearInterval(interval);
+  }, [load, waitingForScan, customersPaying]);
+
+  // Live countdowns (same 10-minute timer the customer sees)
+  // Starts after load (reading the clock while the page is pre-rendered is not allowed).
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    const first = setTimeout(() => setNow(Date.now()), 0);
+    const tick = setInterval(() => setNow(Date.now()), 1000);
     return () => {
       clearTimeout(first);
-      clearInterval(interval);
+      clearInterval(tick);
     };
-  }, [fetchStatus, waitingForWhatsApp]);
+  }, []);
 
-  const runWhatsAppAction = async (action: "qr" | "pairing-code" | "test") => {
-    setWaBusy(action);
-    setWaError("");
+  const act = async (action: string, payload: Record<string, unknown> = {}, success?: string) => {
+    setBusy(action);
     try {
-      const res = await fetch("/api/admin/youpi/whatsapp", {
+      const res = await fetch("/api/admin/gateway/actions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, phone: waPhone }),
+        body: JSON.stringify({ action, ...payload }),
       });
-      const data = await res.json();
+      const result = await res.json();
       if (!res.ok) {
-        setWaError(data?.error || "WhatsApp request failed");
-      } else if (action === "qr") {
-        setWaQr(data.qrCode);
-        if (!data.qrCode) setWaError("No QR yet. Wait a few seconds and try again.");
-      } else if (action === "pairing-code") {
-        setPairingCode(data.pairingCode);
-      } else if (data.delivered) {
-        toast.success("Test message sent", { description: `Check WhatsApp on +91 ${waPhone}` });
-      } else {
-        setWaError("The message was not delivered. Check the number and the WhatsApp connection.");
+        toast.error(result?.error || "Action failed");
+        return null;
       }
+      if (success) toast.success(success);
+      load();
+      return result;
     } catch {
-      setWaError("Network error. Please try again.");
+      toast.error("Network error");
+      return null;
     } finally {
-      setWaBusy("");
+      setBusy("");
     }
   };
 
-  const copyWebhookUrl = () => {
-    if (!status) return;
-    navigator.clipboard.writeText(status.webhookUrl);
-    setCopied(true);
-    toast.success("Webhook URL copied");
-    setTimeout(() => setCopied(false), 2000);
+  const showPairingQr = async () => {
+    const result = await act("pairing-qr");
+    if (result) setPairing(result);
   };
 
-  const hubUrl = status?.hubUrl || null;
-  const whatsappQr = waQr || status?.whatsapp?.qrCode || null;
-  const upiMismatch = Boolean(
-    status?.receivingUpi && status.shopUpi && status.receivingUpi.upiId !== status.shopUpi
-  );
-  const pairingUrl = status?.androidPairing?.serverUrl || "";
-  const pairingIsLocal = /\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(pairingUrl);
-  const gatewayUp = Boolean(status?.gateway?.reachable);
-  const observers = status?.observers;
+  const markPaid = async (sessionId: string, orderNumber: string) => {
+    const utr = window.prompt(`Mark ${orderNumber} as paid?\nUPI reference / UTR from your bank (optional):`, "");
+    if (utr === null) return;
+    await act("mark-paid", { sessionId, utr }, `${orderNumber} marked paid`);
+  };
 
-  const setupItems = status
+  const openSessions = (data?.sessions || []).filter((s) => s.status !== "PAID");
+  const isLocalUrl = /\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(data?.publicBaseUrl || "");
+  const gmailRedirect = `${data?.publicBaseUrl || ""}/api/admin/gateway/gmail/callback`;
+  const phoneOnline = (data?.devices || []).some((d) => d.online);
+
+  const checklist = data
     ? [
-        { done: status.configured.gateway, label: "Gateway URL", env: "YOUPI_PG_BASE_URL", hint: "YouPI payment core, e.g. http://localhost:6100" },
-        { done: status.configured.webhookSecret, label: "Webhook secret", env: "YOUPI_WEBHOOK_SECRET", hint: "Same value as YouPI Store Settings → Webhook Secret" },
-        { done: status.configured.hub, label: "Hub URL", env: "YOUPI_ADMIN_URL", hint: "YouPI merchant hub, e.g. http://localhost:6001" },
-        { done: status.configured.merchantVpa, label: "Fallback UPI ID", env: "YOUPI_MERCHANT_VPA", hint: "Used for manual UPI when the gateway is offline" },
-        { done: status.configured.adminToken, label: "Admin token (optional)", env: "YOUPI_ADMIN_TOKEN", hint: "Shows WhatsApp status here. Read-only use." },
+        { done: data.database, env: "DATABASE_URL", label: "Database (Neon / Vercel Postgres), then npm run db:push" },
+        { done: Boolean(data.upi.upiId), env: "UPI_ID", label: "UPI ID that receives the money" },
+        { done: data.whatsapp.otpRequired, env: "WHATSAPP_SERVICE_URL, WHATSAPP_SERVICE_TOKEN", label: "WhatsApp service running and logged in (customer verification)" },
+        { done: Boolean(data.gmail?.configured), env: "GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET", label: "Google OAuth app (Gmail alerts)" },
+        { done: data.cronConfigured, env: "CRON_SECRET", label: "Daily clean-up job (vercel.json cron)" },
+        { done: !isLocalUrl, env: "NEXT_PUBLIC_APP_URL", label: "Public https address (needed for phone pairing)" },
       ]
     : [];
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1400px] mx-auto">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-[24px] sm:text-[28px] font-bold text-[#1f3a2c]">Payment Gateway</h1>
           <p className="text-[13.5px] text-[#5c5a52]">
-            YouPI-PG connection: WhatsApp OTP, bank observers (SMS &amp; Gmail) and the Android app.
+            TeaPay: your own UPI gateway. Money goes straight to your bank and orders confirm automatically from
+            your bank&apos;s SMS or email.
           </p>
         </div>
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          {hubUrl && (
-            <a
-              href={`${hubUrl}/#developerHub`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 bg-[#1f3a2c] hover:bg-[#14281e] text-white rounded-xl text-[13px] font-semibold flex items-center gap-1.5 transition-colors"
-            >
-              <span>Open YouPI Hub</span>
-              <ExternalLink size={14} />
-            </a>
-          )}
-          <button
-            onClick={() => {
-              setLoading(true);
-              fetchStatus();
-            }}
-            className="px-4 py-2 bg-white border border-[#e7e2d8] hover:border-[#1f3a2c] rounded-xl text-[13px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-          >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            <span>Refresh</span>
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            setLoading(true);
+            load();
+          }}
+          className="px-4 py-2 bg-white border border-[#e7e2d8] hover:border-[#1f3a2c] rounded-xl text-[13px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs self-start sm:self-auto"
+        >
+          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          <span>Refresh</span>
+        </button>
       </div>
 
-      {!status && loading && (
-        <div className="bg-white border border-[#e7e2d8] rounded-2xl p-6 text-[13.5px] text-[#5c5a52]">
-          Checking the gateway…
+      {!data && <Card>Loading…</Card>}
+
+      {data && !data.database && (
+        <div className="bg-[#fff8e6] border border-[#f5d58a] rounded-2xl p-4 flex gap-3 text-[13px] text-[#6b4a00]">
+          <TriangleAlert size={18} className="shrink-0 mt-0.5" />
+          {data.databaseLocal ? (
+            <span>
+              <strong>The local database is not running.</strong> Stop the shop (Ctrl+C) and start it again with{" "}
+              <code>npm run dev</code>: it now starts the database and WhatsApp too. Until then checkout uses
+              manual UPI.
+            </span>
+          ) : data.databaseHost ? (
+            <span>
+              <strong>Cannot reach the database</strong> at <code>{data.databaseHost}</code>. Check{" "}
+              <code>DATABASE_URL</code>. Until then checkout uses manual UPI.
+            </span>
+          ) : (
+            <span>
+              <strong>No database connected</strong>, so checkout uses manual UPI (customers type their UTR and you
+              confirm). Add <code>DATABASE_URL</code> and run <code>npm run db:push</code> to turn on automatic
+              confirmation.
+            </span>
+          )}
         </div>
       )}
 
-      {status && (
+      {data && !data.database && (
+        <div className="max-w-[460px]">
+          <WhatsAppCard data={data} busy={busy} act={act} />
+        </div>
+      )}
+
+      {data?.database && (
         <>
-          {/* Overall banner */}
-          {!status.configured.gateway ? (
-            <div className="bg-[#fff8e6] border border-[#f5d58a] rounded-2xl p-4 flex gap-3 text-[13px] text-[#6b4a00]">
+          {/* Summary */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card>
+              <div className="text-[12px] font-bold text-[#747576] uppercase tracking-wider">Receiving UPI</div>
+              <div className="font-mono font-bold text-[15px] text-[#1f3a2c] mt-1">{data.upi.upiId || "Not set (UPI_ID)"}</div>
+              <div className="text-[12px] text-[#5c5a52]">{data.upi.payeeName}</div>
+            </Card>
+            <Card>
+              <div className="text-[12px] font-bold text-[#747576] uppercase tracking-wider">Paying right now</div>
+              <div className="text-[26px] font-bold text-[#1f3a2c]">{data.stats?.waiting ?? 0}</div>
+            </Card>
+            <Card>
+              <div className="text-[12px] font-bold text-[#747576] uppercase tracking-wider">Paid today</div>
+              <div className="text-[26px] font-bold text-[#1f3a2c]">{data.stats?.paidToday ?? 0}</div>
+            </Card>
+          </div>
+
+          {/* Customers on the checkout right now */}
+          <Card>
+            <CardTitle icon={Clock} title="Customers paying now" right={<Pill ok={customersPaying}>{data.stats?.waiting ?? 0} live</Pill>} />
+            {(data.sessions || []).filter((s) => s.status === "PENDING" || s.status === "VERIFYING").length === 0 ? (
+              <p className="text-[12.5px] text-[#747576]">Nobody is on the UPI payment screen right now.</p>
+            ) : (
+              <div className="space-y-2">
+                {(data.sessions || [])
+                  .filter((s) => s.status === "PENDING" || s.status === "VERIFYING")
+                  .map((s) => {
+                    const left = now ? Math.max(0, Math.round((new Date(s.expiresAt).getTime() - (now + clockOffset)) / 1000)) : 0;
+                    return (
+                      <div key={s.id} className="border border-[#e7e2d8] rounded-xl p-3 flex flex-col md:flex-row md:items-center gap-3">
+                        <div
+                          className={`shrink-0 w-[74px] text-center font-mono font-bold text-[18px] rounded-lg py-1.5 ${
+                            left <= 60 ? "bg-[#e53935]/10 text-[#c62828]" : "bg-[#f0f8f4] text-[#016c2f]"
+                          }`}
+                        >
+                          {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[13.5px] font-bold text-[#1f3a2c]">
+                            {s.customerName} <span className="font-mono font-semibold text-[#747576]">· {s.orderNumber}</span>
+                          </div>
+                          <div className="text-[12px] text-[#5c5a52]">
+                            ₹{s.payAmount} · {s.customerPhone} · <strong>{s.stage}</strong>
+                            {s.customerUtr && ` · UTR typed: ${s.customerUtr}`}
+                          </div>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          <button onClick={() => markPaid(s.id, s.orderNumber)} disabled={busy !== ""} className={buttonDark}>
+                            Mark paid
+                          </button>
+                          <button onClick={() => act("cancel-session", { sessionId: s.id }, "Cancelled")} disabled={busy !== ""} className={buttonLight}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </Card>
+
+          {(data.devices || []).length === 0 && !data.gmail?.connected && (
+            <div className="bg-[#fdecea] border border-[#f5c2bf] rounded-2xl p-4 flex gap-3 text-[13px] text-[#8e1c1a]">
               <TriangleAlert size={18} className="shrink-0 mt-0.5" />
               <span>
-                The gateway is not connected, so checkout uses <strong>manual UPI</strong>: customers type their
-                UTR and you confirm each payment against your bank. Set <code>YOUPI_PG_BASE_URL</code> to turn on
-                WhatsApp OTP and automatic confirmation.
+                No bank alert source yet, so payments cannot confirm automatically. Pair a phone or connect Gmail
+                below. Until then, confirm payments with <strong>Mark paid</strong>.
               </span>
-            </div>
-          ) : !gatewayUp ? (
-            <div className="bg-[#fdecea] border border-[#f5c2bf] rounded-2xl p-4 flex gap-3 text-[13px] text-[#8e1c1a]">
-              <CircleX size={18} className="shrink-0 mt-0.5" />
-              <span>
-                The gateway at <code>{status.gateway?.url}</code> is not reachable. Checkout has fallen back to
-                manual UPI until it is back. Start YouPI-PG on that machine.
-              </span>
-            </div>
-          ) : observers && !observers.isWorking ? (
-            <div className="bg-[#fdecea] border border-[#f5c2bf] rounded-2xl p-4 flex gap-3 text-[13px] text-[#8e1c1a]">
-              <TriangleAlert size={18} className="shrink-0 mt-0.5" />
-              <span>
-                <strong>{observers.label}.</strong> {observers.reason} Payments cannot be confirmed automatically
-                until the SMS gateway and Gmail are both connected. Customers will see a warning at checkout.
-              </span>
-            </div>
-          ) : (
-            <div className="bg-[#f0f8f4] border border-[#bfdcc9] rounded-2xl p-4 flex gap-3 text-[13px] text-[#1f3a2c]">
-              <CircleCheck size={18} className="shrink-0 mt-0.5 text-[#016c2f]" />
-              <span>Gateway is working. UPI payments are confirmed automatically.</span>
             </div>
           )}
 
-          {/* Live status */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <StatusCard
-              icon={Server}
-              title="Gateway"
-              tone={!status.configured.gateway ? "off" : gatewayUp ? "ok" : "bad"}
-              state={!status.configured.gateway ? "Not set" : gatewayUp ? "Online" : "Offline"}
-              detail={
-                !status.configured.gateway
-                  ? "Add YOUPI_PG_BASE_URL to your environment."
-                  : gatewayUp
-                    ? (
-                        <>
-                          {status.gateway?.url} · {status.gateway?.latencyMs} ms
-                          {status.receivingUpi && (
-                            <span className="block mt-1">
-                              Customers pay <strong className="font-mono">{status.receivingUpi.upiId}</strong>
-                            </span>
-                          )}
-                          {upiMismatch && (
-                            <span className="block mt-1 text-[#c62828]">
-                              Shop fallback UPI is {status.shopUpi}. Make both the same.
-                            </span>
-                          )}
-                        </>
-                      )
-                    : status.gateway?.error || "Not reachable"
-              }
-            />
-
-            <StatusCard
-              icon={MessageCircle}
-              title="WhatsApp (OTP)"
-              tone={
-                !status.whatsapp
-                  ? "off"
-                  : status.whatsapp.error
-                    ? "warn"
-                    : status.whatsapp.isConnected
-                      ? "ok"
-                      : "bad"
-              }
-              state={
-                !status.whatsapp
-                  ? "Unknown"
-                  : status.whatsapp.error
-                    ? "Check hub"
-                    : status.whatsapp.isConnected
-                      ? "Connected"
-                      : status.whatsapp.status || "Disconnected"
-              }
-              detail={
-                !status.whatsapp
-                  ? "Add YOUPI_ADMIN_TOKEN to see the status here. Customers get their OTP from this number."
-                  : status.whatsapp.error
-                    ? status.whatsapp.error
-                    : status.whatsapp.isConnected
-                      ? `Sending OTPs from +${(status.whatsapp.phoneNumber || "—").replace(/^\+/, "")}`
-                      : "Scan the WhatsApp QR in the YouPI hub to send OTPs."
-              }
-              action={!status.whatsapp?.isConnected && <HubLink hubUrl={hubUrl} section="developerHub" label="Connect WhatsApp" />}
-            />
-
-            <StatusCard
-              icon={Smartphone}
-              title="SMS observer"
-              tone={!observers ? "off" : observers.sms ? "ok" : "bad"}
-              state={!observers ? "Unknown" : observers.sms ? "Live" : "Offline"}
-              detail="Reads bank credit SMS. On this Mac, link Google Messages for Web in the YouPI hub (scan with your phone's Messages app)."
-              action={observers && !observers.sms && <HubLink hubUrl={hubUrl} section="developerHub" label="Pair phone" />}
-            />
-
-            <StatusCard
-              icon={Mail}
-              title="Gmail observer"
-              tone={!observers ? "off" : observers.gmail ? "ok" : "bad"}
-              state={!observers ? "Unknown" : observers.gmail ? "Live" : "Offline"}
-              detail="Reads bank credit alert emails. Sign in with the Gmail that gets your bank alerts in the YouPI hub."
-              action={observers && !observers.gmail && <HubLink hubUrl={hubUrl} section="developerHub" label="Connect Gmail" />}
-            />
-          </div>
-
-          {/* WhatsApp OTP sender */}
-          {status.whatsapp && !status.whatsapp.error && (
-            <div className="bg-white border border-[#e7e2d8] rounded-2xl p-5 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <MessageCircle size={18} className="text-[#016c2f]" />
-                  <h2 className="font-bold text-[16px] text-[#1f3a2c]">WhatsApp OTP sender</h2>
-                </div>
-                <Badge tone={status.whatsapp.isConnected ? "ok" : "bad"}>
-                  {status.whatsapp.isConnected ? "Connected" : "Not logged in"}
-                </Badge>
+          {/* Bank alert sources + WhatsApp */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <Card>
+              <CardTitle
+                icon={Smartphone}
+                title="SMS verification (phone)"
+                right={
+                  <Switch
+                    on={data.toggles.sms}
+                    label="SMS verification"
+                    disabled={busy !== ""}
+                    onChange={(on) => act("toggle", { key: "sms", enabled: on }, on ? "SMS verification turned on" : "SMS verification turned off")}
+                  />
+                }
+              />
+              {!data.toggles.sms ? (
+                <p className="text-[12.5px] text-[#5c5a52]">
+                  <strong>Off.</strong> The phone&apos;s bank SMS and payment notifications are ignored. Turn on to
+                  confirm payments automatically with the Android app.
+                </p>
+              ) : (
+              <>
+              <div className="mb-2">
+                <Pill ok={phoneOnline}>{phoneOnline ? "Phone online" : "No phone online"}</Pill>
               </div>
-
-              {status.whatsapp.isConnected ? (
-                <div className="space-y-3">
-                  <p className="text-[13px] text-[#5c5a52]">
-                    Customers receive their checkout code from{" "}
-                    <strong>+{(status.whatsapp.phoneNumber || "your linked number").replace(/^\+/, "")}</strong>. Send yourself a test to
-                    confirm messages arrive.
-                  </p>
-                  <div className="flex gap-2 max-w-md">
-                    <input
-                      type="tel"
-                      value={waPhone}
-                      onChange={(e) => setWaPhone(e.target.value)}
-                      placeholder="10-digit mobile number"
-                      className="flex-1 min-w-0 px-3.5 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13.5px] bg-white outline-none"
-                    />
+              <p className="text-[12.5px] text-[#5c5a52] mb-3">
+                Install the app on the phone that gets your bank SMS / UPI notifications. When money arrives it is
+                matched to the order here automatically. Only bank credit alerts are kept.
+              </p>
+              <div className="space-y-2 mb-3">
+                {(data.devices || []).length === 0 && <div className="text-[12.5px] text-[#747576]">No phone paired yet.</div>}
+                {(data.devices || []).map((d) => (
+                  <div key={d.id} className="flex items-center justify-between gap-2 bg-[#fafafa] border border-[#e7e2d8] rounded-lg px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-[#202020] flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full ${d.online ? "bg-[#02cb5a]" : "bg-[#c9c6bd]"}`} />
+                        {d.name}
+                      </div>
+                      <div className="text-[11.5px] text-[#747576]">
+                        seen {timeAgo(d.lastHeartbeatAt)}
+                        {d.batteryPercent !== null && ` · ${d.batteryPercent}% battery`}
+                      </div>
+                      {d.lastTestAt && (
+                        <div className="text-[11.5px] text-[#016c2f] font-semibold">✓ Test SMS received {timeAgo(d.lastTestAt)}</div>
+                      )}
+                    </div>
                     <button
-                      onClick={() => runWhatsAppAction("test")}
-                      disabled={waBusy !== ""}
-                      className="bg-[#1f3a2c] hover:bg-[#14281e] disabled:opacity-60 text-white px-4 py-2 rounded-lg font-bold text-[13px] flex items-center gap-1.5 cursor-pointer shrink-0"
+                      onClick={() => window.confirm(`Remove ${d.name}? It will stop reporting payments.`) && act("remove-device", { deviceId: d.id }, "Phone removed")}
+                      className="p-1.5 rounded-lg border border-[#e7e2d8] hover:bg-white text-[#c62828] cursor-pointer"
+                      title="Remove phone"
                     >
-                      {waBusy === "test" ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
-                      Send test
+                      <Trash size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={showPairingQr} disabled={busy !== ""} className={buttonDark}>
+                  <QrCode size={14} /> Pair a phone
+                </button>
+                <a href={data.apkUrl} download className={buttonLight}>
+                  <Download size={14} /> Android app
+                </a>
+              </div>
+              {isLocalUrl && (
+                <p className="text-[11.5px] text-[#9a5b00] mt-2">
+                  Pairing needs your public https address. It works once the shop is live on Vercel.
+                </p>
+              )}
+              {(data.devices || []).length > 0 && (
+                <p className="text-[11.5px] text-[#5c5a52] mt-2">
+                  Check the link: in the app tap <strong>Dispatch Test Bank Credit SMS</strong>; “Test SMS received”
+                  appears above.
+                </p>
+              )}
+              {(data.phoneFeed || []).length > 0 && (
+                <div className="mt-3 border-t border-[#e7e2d8] pt-3">
+                  <div className="text-[12px] font-bold text-[#747576] uppercase tracking-wider mb-1.5">From the phone</div>
+                  <ul className="space-y-1">
+                    {(data.phoneFeed || []).map((f) => (
+                      <li key={f.id} className="flex items-center justify-between gap-2 text-[12px]">
+                        <span className="font-semibold text-[#202020]">
+                          ₹{f.amount} <span className="font-normal text-[#747576]">· {timeAgo(f.receivedAt)}</span>
+                        </span>
+                        {f.orderNumber ? (
+                          <span className="text-[#016c2f] font-semibold">✓ {f.orderNumber}</span>
+                        ) : (
+                          <span className="text-[#9a5b00]">not matched</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {pairing && (
+                <div className="mt-3 border-t border-[#e7e2d8] pt-3 space-y-2">
+                  <img src={pairing.qrDataUrl} alt="Phone pairing QR" className="w-[200px] h-[200px] mx-auto" />
+                  <ol className="list-decimal pl-5 text-[12px] text-[#202020] space-y-0.5">
+                    <li>Install the Android app on the payment phone; allow SMS and notification access.</li>
+                    <li>In the app tap <strong>Scan QR</strong> and scan this code.</li>
+                  </ol>
+                  <p className="text-[11px] text-[#747576]">
+                    One-time code, valid until {new Date(pairing.expiresAt).toLocaleTimeString("en-IN")}. Can&apos;t
+                    scan? Use manual pairing in the app with:
+                  </p>
+                  <div className="text-[11px] font-mono bg-[#fafafa] border border-[#e7e2d8] rounded-lg px-2 py-1.5 break-all space-y-0.5">
+                    <div>Server: {pairing.serverUrl}</div>
+                    <div>Code: {pairing.enrollmentToken}</div>
+                  </div>
+                </div>
+              )}
+              </>
+              )}
+            </Card>
+
+            <Card>
+              <CardTitle
+                icon={Mail}
+                title="Gmail verification"
+                right={
+                  <Switch
+                    on={data.toggles.gmail}
+                    label="Gmail verification"
+                    disabled={busy !== ""}
+                    onChange={(on) => act("toggle", { key: "gmail", enabled: on }, on ? "Gmail verification turned on" : "Gmail verification turned off")}
+                  />
+                }
+              />
+              {!data.toggles.gmail ? (
+                <p className="text-[12.5px] text-[#5c5a52]">
+                  <strong>Off.</strong> Bank emails are not checked. Turn on to also confirm payments from your bank&apos;s
+                  alert emails.
+                </p>
+              ) : !data.gmail?.configured ? (
+                <div className="text-[12.5px] text-[#5c5a52] space-y-2">
+                  <p>
+                    Create a Google OAuth app (Gmail API, read-only), then set <code>GOOGLE_CLIENT_ID</code> and{" "}
+                    <code>GOOGLE_CLIENT_SECRET</code>. Add this redirect URI:
+                  </p>
+                  <code className="block break-all bg-[#fafafa] border border-[#e7e2d8] rounded-lg px-2 py-1.5 text-[11.5px]">{gmailRedirect}</code>
+                </div>
+              ) : data.gmail.connected ? (
+                <div className="space-y-3">
+                  <div className="text-[13px] text-[#202020]">
+                    Reading bank alerts in <strong>{data.gmail.email}</strong>
+                  </div>
+                  <div className="text-[12px] text-[#747576]">Last checked {timeAgo(data.gmail.lastPollAt)}</div>
+                  {data.gmail.lastError && <div className="text-[12px] text-[#c62828]">{data.gmail.lastError}</div>}
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => act("gmail-check", {}, "Gmail checked")} disabled={busy !== ""} className={buttonDark}>
+                      <RefreshCw size={14} /> Check now
+                    </button>
+                    <button
+                      onClick={() => window.confirm("Disconnect Gmail?") && act("gmail-disconnect", {}, "Gmail disconnected")}
+                      disabled={busy !== ""}
+                      className={buttonLight}
+                    >
+                      Disconnect
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="space-y-3">
-                    <ol className="list-decimal pl-5 space-y-1 text-[13px] text-[#202020]">
-                      <li>On the phone whose WhatsApp should send OTPs, open WhatsApp.</li>
-                      <li>
-                        Go to <strong>Settings → Linked devices → Link a device</strong>.
-                      </li>
-                      <li>Scan the QR. This page turns green within a few seconds.</li>
-                    </ol>
-                    <div className="flex items-center justify-center bg-[#fafafa] border border-[#e7e2d8] rounded-xl w-[232px] h-[232px]">
-                      {whatsappQr ? (
-                        <img src={whatsappQr} alt="WhatsApp login QR" className="w-[220px] h-[220px] object-contain" />
-                      ) : (
-                        <span className="text-[12.5px] text-[#747576] text-center px-4">Tap “Get QR” to show the login code</span>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => runWhatsAppAction("qr")}
-                      disabled={waBusy !== ""}
-                      className="bg-[#25d366] hover:bg-[#1fbe5b] disabled:opacity-60 text-white px-4 py-2 rounded-lg font-bold text-[13px] flex items-center gap-1.5 cursor-pointer"
-                    >
-                      {waBusy === "qr" ? <RefreshCw size={14} className="animate-spin" /> : <QrCode size={14} />}
-                      {whatsappQr ? "Get new QR" : "Get QR"}
-                    </button>
-                  </div>
+                <div className="space-y-3">
+                  <p className="text-[12.5px] text-[#5c5a52]">
+                    Sign in with the Gmail account that receives your bank&apos;s credit alerts. Read-only; only
+                    DKIM-verified bank emails are used.
+                  </p>
+                  <a href="/api/admin/gateway/gmail/connect" className={buttonDark}>
+                    <Mail size={14} /> Sign in with Google
+                  </a>
+                </div>
+              )}
+            </Card>
 
-                  <div className="space-y-3 md:border-l md:border-[#e7e2d8] md:pl-5">
-                    <p className="text-[13px] text-[#202020]">
-                      <strong>Can&apos;t scan?</strong> Link with a code instead: WhatsApp →{" "}
-                      <strong>Linked devices → Link a device → Link with phone number</strong>.
-                    </p>
-                    <div className="flex gap-2 max-w-sm">
-                      <input
-                        type="tel"
-                        value={waPhone}
-                        onChange={(e) => setWaPhone(e.target.value)}
-                        placeholder="That phone's 10-digit number"
-                        className="flex-1 min-w-0 px-3.5 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13.5px] bg-white outline-none"
-                      />
-                      <button
-                        onClick={() => runWhatsAppAction("pairing-code")}
-                        disabled={waBusy !== ""}
-                        className="bg-[#1f3a2c] hover:bg-[#14281e] disabled:opacity-60 text-white px-4 py-2 rounded-lg font-bold text-[13px] flex items-center gap-1.5 cursor-pointer shrink-0"
+            <WhatsAppCard data={data} busy={busy} act={act} />
+          </div>
+
+          {/* Unmatched credits */}
+          {(data.unmatchedCredits || []).length > 0 && (
+            <Card>
+              <CardTitle icon={IndianRupee} title="Money received but not matched" />
+              <p className="text-[12.5px] text-[#5c5a52] mb-3">
+                Usually a customer paid a different amount than shown. Link it to their payment to create the order.
+              </p>
+              <div className="space-y-2">
+                {(data.unmatchedCredits || []).map((c) => (
+                  <div key={c.id} className="border border-[#e7e2d8] rounded-xl p-3 flex flex-col md:flex-row md:items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[14px] font-bold text-[#1f3a2c]">
+                        ₹{c.amount}{" "}
+                        <span className="text-[11.5px] font-semibold text-[#747576]">
+                          · {SOURCE_LABEL[c.source] || c.source} · {timeAgo(c.observedAt)}
+                          {c.utr && ` · UTR ${c.utr}`}
+                          {c.payerVpa && ` · from ${c.payerVpa}`}
+                        </span>
+                      </div>
+                      <div className="text-[11.5px] text-[#5c5a52] truncate">{c.text}</div>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <select
+                        value={assignTo[c.id] || ""}
+                        onChange={(e) => setAssignTo({ ...assignTo, [c.id]: e.target.value })}
+                        className="px-2 py-2 border border-[#e7e2d8] rounded-lg text-[12.5px] bg-white max-w-[220px]"
                       >
-                        {waBusy === "pairing-code" ? <RefreshCw size={14} className="animate-spin" /> : <KeyRound size={14} />}
-                        Get code
+                        <option value="">Choose payment…</option>
+                        {openSessions.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.orderNumber} · ₹{s.payAmount} · {s.customerName}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        disabled={!assignTo[c.id] || busy !== ""}
+                        onClick={() => act("assign-credit", { creditId: c.id, sessionId: assignTo[c.id] }, "Payment linked and order created")}
+                        className={buttonDark}
+                      >
+                        Link
                       </button>
                     </div>
-                    {pairingCode && (
-                      <div className="text-[26px] font-mono font-bold tracking-[0.2em] text-[#1f3a2c]">{pairingCode}</div>
-                    )}
                   </div>
-                </div>
-              )}
-
-              {waError && <p className="text-[12.5px] text-[#e53935]">{waError}</p>}
-            </div>
+                ))}
+              </div>
+            </Card>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Android app */}
-            <div className="bg-white border border-[#e7e2d8] rounded-2xl p-5 shadow-2xs space-y-3.5">
-              <div className="flex items-center gap-2">
-                <Smartphone size={18} className="text-[#016c2f]" />
-                <h2 className="font-bold text-[16px] text-[#1f3a2c]">Android payment app</h2>
-              </div>
-              <p className="text-[13px] text-[#5c5a52]">
-                Install this on the phone that receives your UPI money. It reads the bank&apos;s payment
-                notification and reports it to the gateway, so orders confirm on their own.
-              </p>
-
-              {status.apk.available ? (
-                <a
-                  href="/api/admin/youpi/apk"
-                  className="inline-flex items-center gap-2 bg-[#02cb5a] hover:bg-[#02b851] text-[#1f3a2c] px-4 py-2.5 rounded-xl font-bold text-[13.5px] transition-colors"
-                >
-                  <Download size={16} />
-                  Download APK
-                  {status.apk.sizeBytes ? (
-                    <span className="font-medium opacity-80">({(status.apk.sizeBytes / 1024).toFixed(0)} KB)</span>
-                  ) : null}
-                </a>
-              ) : (
-                <div className="text-[12.5px] text-[#8e1c1a]">
-                  The app file is not available. Make sure the gateway is running.
-                </div>
-              )}
-
-              {status.apk.sha256 && (
-                <div className="text-[11.5px] text-[#747576] break-all">
-                  SHA-256: <span className="font-mono">{status.apk.sha256}</span>
-                </div>
-              )}
-
-              {status.androidPairing && (
-                <div className="text-[12.5px] text-[#202020]">
-                  Paired phones: <strong>{status.androidPairing.devices.length}</strong>
-                  {status.androidPairing.devices.map((d) => (
-                    <span key={d.name} className="block text-[#5c5a52]">
-                      {d.name} · {d.isActive ? "active" : "inactive"}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {pairingIsLocal && (
-                <div className="bg-[#fff8e6] border border-[#f5d58a] rounded-lg p-3 text-[12.5px] text-[#6b4a00] flex gap-2">
-                  <TriangleAlert size={15} className="shrink-0 mt-0.5" />
-                  <span>
-                    YouPI&apos;s pairing QR points to <code>{pairingUrl}</code>, which a phone cannot reach. The app
-                    can pair only after YouPI has a public URL (its Cloudflare tunnel). Until then, use{" "}
-                    <strong>Google Messages for Web</strong> for the SMS observer.
-                  </span>
-                </div>
-              )}
-
-              <ol className="list-decimal pl-5 space-y-1 text-[12.5px] text-[#202020]">
-                <li>Open this admin page on the payment phone and tap <strong>Download APK</strong>.</li>
-                <li>Allow &ldquo;Install unknown apps&rdquo; for your browser when Android asks, then install.</li>
-                <li>Open the app and give it <strong>Notification access</strong>.</li>
-                <li>
-                  In the YouPI hub, open the SMS gateway pairing QR and scan it with the app. The phone must be
-                  able to reach the gateway (same Wi-Fi, or your public gateway URL).
-                </li>
-              </ol>
-              <HubLink hubUrl={hubUrl} section="developerHub" label="Open pairing in YouPI hub" />
+          {/* Payments */}
+          <Card className="p-0 overflow-hidden">
+            <div className="p-5 pb-3">
+              <CardTitle icon={Clock} title="Recent UPI payments" />
             </div>
-
-            {/* Webhook + setup */}
-            <div className="space-y-4">
-              <div className="bg-white border border-[#e7e2d8] rounded-2xl p-5 shadow-2xs space-y-3">
-                <div className="flex items-center gap-2">
-                  <Webhook size={18} className="text-[#016c2f]" />
-                  <h2 className="font-bold text-[16px] text-[#1f3a2c]">Webhook</h2>
-                </div>
-                <p className="text-[13px] text-[#5c5a52]">
-                  Optional. Your shop already confirms every payment directly with YouPI. The webhook only adds a
-                  backup notice. To use it, paste this into YouPI <strong>Store Settings → Webhook URL</strong>.
-                </p>
-                {status.youpiWebhookUrl !== null && status.youpiWebhookUrl !== status.webhookUrl && (
-                  <p className="text-[12.5px] text-[#6b4a00] bg-[#fff8e6] rounded-lg px-3 py-2">
-                    YouPI currently sends its webhook to{" "}
-                    <code>{status.youpiWebhookUrl || "nowhere"}</code>. YouPI holds one webhook URL, so changing it
-                    disconnects that app.
-                  </p>
-                )}
-                <div className="flex items-center gap-2 bg-[#fafafa] border border-[#e7e2d8] rounded-xl px-3 py-2">
-                  <span className="font-mono text-[12.5px] text-[#1f3a2c] break-all flex-1">{status.webhookUrl}</span>
-                  <button
-                    onClick={copyWebhookUrl}
-                    className="p-1.5 rounded-lg border border-[#e7e2d8] hover:bg-white text-[#202020] transition-colors cursor-pointer shrink-0"
-                  >
-                    {copied ? <Check size={14} className="text-[#02cb5a]" /> : <Copy size={14} />}
-                  </button>
-                </div>
-                <HubLink hubUrl={hubUrl} section="storeSettings" label="Open Store Settings" />
-              </div>
-
-              <div className="bg-white border border-[#e7e2d8] rounded-2xl p-5 shadow-2xs">
-                <h2 className="font-bold text-[16px] text-[#1f3a2c] mb-3">Setup checklist</h2>
-                <ul className="space-y-2.5">
-                  {setupItems.map((item) => (
-                    <li key={item.env} className="flex items-start gap-2.5">
-                      {item.done ? (
-                        <CircleCheck size={17} className="text-[#02cb5a] shrink-0 mt-0.5" />
-                      ) : (
-                        <CircleX size={17} className="text-[#c9c6bd] shrink-0 mt-0.5" />
-                      )}
-                      <div className="min-w-0">
-                        <div className="text-[13px] font-semibold text-[#202020]">
-                          {item.label} <code className="text-[11.5px] font-normal text-[#5c5a52]">{item.env}</code>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12.5px]">
+                <thead className="bg-[#fafafa] text-[#747576] text-left">
+                  <tr>
+                    <th className="px-4 py-2 font-bold">Order</th>
+                    <th className="px-4 py-2 font-bold">Customer</th>
+                    <th className="px-4 py-2 font-bold">Amount</th>
+                    <th className="px-4 py-2 font-bold">Status</th>
+                    <th className="px-4 py-2 font-bold">Reference</th>
+                    <th className="px-4 py-2 font-bold">Started</th>
+                    <th className="px-4 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.sessions || []).length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-6 text-center text-[#747576]">
+                        No UPI payments yet.
+                      </td>
+                    </tr>
+                  )}
+                  {(data.sessions || []).map((s) => (
+                    <tr key={s.id} className="border-t border-[#efece5]">
+                      <td className="px-4 py-2.5 font-mono font-semibold text-[#1f3a2c]">{s.orderNumber}</td>
+                      <td className="px-4 py-2.5">
+                        <div className="font-semibold text-[#202020]">{s.customerName}</div>
+                        <div className="text-[#747576]">
+                          {s.customerPhone} {s.phoneVerified && <CircleCheck size={11} className="inline text-[#02cb5a]" />}
                         </div>
-                        <div className="text-[12px] text-[#747576]">{item.hint}</div>
-                      </div>
-                    </li>
+                      </td>
+                      <td className="px-4 py-2.5 font-semibold">₹{s.payAmount}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded uppercase ${STATUS_STYLE[s.status] || ""}`}>{s.status}</span>
+                        {s.paidVia && <div className="text-[11px] text-[#747576] mt-0.5">via {SOURCE_LABEL[s.paidVia] || s.paidVia}</div>}
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-[11.5px]">
+                        {s.utr || (s.customerUtr ? <span title="Typed by the customer, not verified">{s.customerUtr} (customer)</span> : "—")}
+                      </td>
+                      <td className="px-4 py-2.5 text-[#747576] whitespace-nowrap">{timeAgo(s.createdAt)}</td>
+                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                        {s.status !== "PAID" && (
+                          <div className="inline-flex gap-1.5">
+                            <button onClick={() => markPaid(s.id, s.orderNumber)} disabled={busy !== ""} className={buttonLight}>
+                              Mark paid
+                            </button>
+                            {(s.status === "PENDING" || s.status === "VERIFYING") && (
+                              <button onClick={() => act("cancel-session", { sessionId: s.id }, "Cancelled")} disabled={busy !== ""} className={buttonLight}>
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
                   ))}
-                </ul>
-              </div>
+                </tbody>
+              </table>
             </div>
-          </div>
-
-          <p className="text-[11.5px] text-[#8e8d8a]">
-            Last checked {new Date(status.checkedAt).toLocaleTimeString("en-IN")} · refreshes every 15 seconds
-          </p>
+          </Card>
         </>
+      )}
+
+      {data && (
+        <Card>
+          <h2 className="font-bold text-[16px] text-[#1f3a2c] mb-3">Setup checklist</h2>
+          <ul className="space-y-2.5">
+            {checklist.map((item) => (
+              <li key={item.env} className="flex items-start gap-2.5">
+                {item.done ? (
+                  <CircleCheck size={17} className="text-[#02cb5a] shrink-0 mt-0.5" />
+                ) : (
+                  <CircleX size={17} className="text-[#c9c6bd] shrink-0 mt-0.5" />
+                )}
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold text-[#202020]">{item.label}</div>
+                  <code className="text-[11.5px] text-[#5c5a52] break-all">{item.env}</code>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
     </div>
   );
