@@ -398,8 +398,7 @@ export default function TeaPayPanel({
           <div className="text-[26px] font-bold text-[#1f3a2c]">{amountLabel}</div>
           {view.adjustmentPaise > 0 && (
             <div className="text-[11.5px] text-[#5c5a52]">
-              ₹{(view.adjustmentPaise / 100).toFixed(2)} less than your order total, so we can match your payment
-              automatically.
+              Gateway Fee: ₹{(view.adjustmentPaise / 100).toFixed(2)}
             </div>
           )}
           <div className="text-[12.5px] text-[#5c5a52]">

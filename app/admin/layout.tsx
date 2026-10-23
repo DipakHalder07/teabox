@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { Toaster } from "sonner";
 import LivePaymentsWatcher from "@/components/admin/LivePaymentsWatcher";
 import {
   LayoutDashboard,
@@ -67,7 +68,12 @@ export default function AdminLayout({
 
   // If on login page, render full screen without sidebar
   if (isLoginPage) {
-    return <>{children}</>;
+    return (
+      <>
+        {children}
+        <Toaster position="top-right" richColors closeButton />
+      </>
+    );
   }
 
   const navItems = [
@@ -211,6 +217,7 @@ export default function AdminLayout({
       </main>
       {/* Live UPI payments + alerts, on every admin page */}
       {!loading && adminUser && <LivePaymentsWatcher />}
+      <Toaster position="top-right" richColors closeButton />
     </div>
   );
 }
