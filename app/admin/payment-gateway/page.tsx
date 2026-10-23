@@ -25,6 +25,7 @@ interface Overview {
   database: boolean;
   databaseHost?: string | null;
   databaseLocal?: boolean;
+  databaseLocalOnServer?: boolean;
   upi: { upiId: string | null; payeeName: string };
   whatsapp: {
     provider: "qr" | "cloud" | null;
@@ -537,7 +538,13 @@ export default function AdminPaymentGatewayPage() {
       {data && !data.database && (
         <div className="bg-[#fff8e6] border border-[#f5d58a] rounded-2xl p-4 flex gap-3 text-[13px] text-[#6b4a00]">
           <TriangleAlert size={18} className="shrink-0 mt-0.5" />
-          {data.databaseLocal ? (
+          {data.databaseLocalOnServer ? (
+            <span>
+              <strong>DATABASE_URL on Vercel points to 127.0.0.1</strong>, the database on your own computer, which
+              Vercel cannot reach. In Vercel → Storage, create a Neon database for this project, delete the old{" "}
+              <code>DATABASE_URL</code>, and redeploy. Until then checkout uses manual UPI.
+            </span>
+          ) : data.databaseLocal ? (
             <span>
               <strong>The local database is not running.</strong> Stop the shop (Ctrl+C) and start it again with{" "}
               <code>npm run dev</code>: it now starts the database and WhatsApp too. Until then checkout uses

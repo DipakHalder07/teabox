@@ -6,6 +6,18 @@ export interface DatabaseStatusInfo {
   driver: "PostgreSQL" | "In-Memory Fallback";
   host: string;
   lastChecked: string;
+  /** Why it is offline: no URL, a computer-local URL on the live server, or unreachable. */
+  problem: "not-configured" | "local-url-on-server" | "unreachable" | null;
+}
+
+/** True when DATABASE_URL points to this computer while running on Vercel (it can never work there). */
+export function isLocalUrlOnServer() {
+  try {
+    const host = new URL(process.env.DATABASE_URL || "").hostname;
+    return Boolean(process.env.VERCEL) && ["127.0.0.1", "localhost"].includes(host);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -33,5 +45,6 @@ export async function getDatabaseStatus(): Promise<DatabaseStatusInfo> {
     driver: connected ? "PostgreSQL" : "In-Memory Fallback",
     host,
     lastChecked: new Date().toISOString(),
+    problem: connected ? null : !dbUrl ? "not-configured" : isLocalUrlOnServer() ? "local-url-on-server" : "unreachable",
   };
 }

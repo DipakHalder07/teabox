@@ -72,6 +72,12 @@ export async function saveOrder(orderData: Omit<StoredOrderData, "createdAt" | "
   try {
     const isDbUp = await isDatabaseConnected();
     if (isDbUp) {
+      // Link items only to products that exist in the database (a new or edited catalog
+      // must never make the order fail).
+      const productIds = orderData.items.map((i) => i.productId).filter((id): id is string => Boolean(id));
+      const knownProducts = new Set(
+        (await prisma.product.findMany({ where: { id: { in: productIds } }, select: { id: true } })).map((p) => p.id)
+      );
       const created = await prisma.order.create({
         data: {
           id: orderData.id,
@@ -97,7 +103,7 @@ export async function saveOrder(orderData: Omit<StoredOrderData, "createdAt" | "
           notes: orderData.notes,
           items: {
             create: orderData.items.map((item) => ({
-              productId: item.productId,
+              productId: item.productId && knownProducts.has(item.productId) ? item.productId : null,
               title: item.title,
               weight: item.weight,
               price: item.price,

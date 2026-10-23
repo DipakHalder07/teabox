@@ -26,8 +26,9 @@ service handles both: it keeps the WhatsApp login in the shop's database and cal
 
 1. Push the shop to GitHub, then on https://render.com choose **New → Blueprint** and pick the
    repo. Render reads `render.yaml` and creates `teabox-whatsapp` (free, Singapore).
-2. When asked for `WHATSAPP_SESSION_DB_URL`, paste the Neon **direct** connection string (the
-   one without `-pooler`, and without `&pgbouncer=true`).
+2. When asked for `WHATSAPP_SESSION_DB_URL`, paste the Neon **direct** connection string: in
+   Vercel → Settings → Environment Variables, copy the value of `DATABASE_URL_UNPOOLED`
+   (no `-pooler` in it, and no `&pgbouncer=true`).
 3. After it deploys, copy from Render: the service address (`https://teabox-whatsapp.onrender.com`)
    and the generated `WHATSAPP_SERVICE_TOKEN` (Environment tab).
 4. In Vercel, set `WHATSAPP_SERVICE_URL` to that address and `WHATSAPP_SERVICE_TOKEN` to the same

@@ -6,6 +6,7 @@
     "dev": "node scripts/dev-all.mjs",
     "dev:web": "next dev",
     "build": "next build",
+    "vercel-build": "node scripts/vercel-build.mjs",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",

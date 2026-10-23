@@ -5,9 +5,29 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
 
+/**
+ * Neon's pooled address (host contains "-pooler", as set by Vercel's Neon integration) goes
+ * through PgBouncer, which needs `pgbouncer=true` for Prisma. Added here so the URL can be
+ * pasted unchanged.
+ */
+function runtimeDatabaseUrl() {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) return undefined;
+  try {
+    const url = new URL(raw);
+    if (url.hostname.includes("-pooler") && !url.searchParams.has("pgbouncer")) {
+      url.searchParams.set("pgbouncer", "true");
+    }
+    return url.toString();
+  } catch {
+    return raw;
+  }
+}
+
 export const prisma =
   globalForPrisma.prisma ||
   new PrismaClient({
+    datasourceUrl: runtimeDatabaseUrl(),
     log: ["warn"],
   });
 
