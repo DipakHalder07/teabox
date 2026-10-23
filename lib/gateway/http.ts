@@ -13,7 +13,8 @@ export function errorResponse(error: unknown, fallback = "Payment error") {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
   console.error("[TeaPay]", error);
-  return NextResponse.json({ error: fallback }, { status: 500 });
+  const msg = error instanceof Error ? error.message : fallback;
+  return NextResponse.json({ error: msg }, { status: 500 });
 }
 
 /** The shop's public address (used in the phone pairing QR and the Google sign-in redirect). */

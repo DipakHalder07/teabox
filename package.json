@@ -13,7 +13,7 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "db:local": "pglite-server --db=.pglite --port=5433 --max-connections=5",
+    "db:local": "pglite-server --db=.pglite --port=5435 --max-connections=10",
     "whatsapp": "npm --prefix whatsapp-service start",
     "whatsapp:install": "npm --prefix whatsapp-service install",
     "dev:all": "node scripts/dev-all.mjs"

@@ -29,6 +29,7 @@ for (const file of [path.join(here, ".env"), path.join(here, "..", ".env")]) {
 const TOKEN = process.env.WHATSAPP_SERVICE_TOKEN || "";
 const PORT = Number(process.env.WHATSAPP_SERVICE_PORT || process.env.PORT || 7071);
 const AUTH_DIR = path.resolve(here, process.env.WHATSAPP_AUTH_DIR || "auth");
+if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 const SESSION_DB_URL = process.env.WHATSAPP_SESSION_DB_URL || "";
 const KEEP_AWAKE_URL = process.env.KEEP_AWAKE_URL || process.env.RENDER_EXTERNAL_URL || "";
 if (TOKEN.length < 16) {

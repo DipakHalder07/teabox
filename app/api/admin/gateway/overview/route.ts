@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
       database: false,
       databaseHost,
       databaseLocal:
-        !isLocalUrlOnServer() && Boolean(databaseHost && /^(127\.0\.0\.1|localhost):5433$/.test(databaseHost)),
+        !isLocalUrlOnServer() && Boolean(databaseHost && /^(127\.0\.0\.1|localhost):(5433|5435)$/.test(databaseHost)),
       databaseLocalOnServer: isLocalUrlOnServer(),
     });
   }

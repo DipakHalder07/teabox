@@ -48,10 +48,12 @@ async function waitForPort(port, ms) {
 
 // Local database only (never touches a hosted database like Neon).
 const dbUrl = process.env.DATABASE_URL || "";
-if (/127\.0\.0\.1:5433|localhost:5433/.test(dbUrl)) {
-  if (await portInUse(5433)) console.log("✓ database already running on 5433");
+const localDbMatch = dbUrl.match(/(?:127\.0\.0\.1|localhost):(\d+)/);
+if (localDbMatch) {
+  const localDbPort = Number(localDbMatch[1]);
+  if (await portInUse(localDbPort)) console.log(`✓ database already running on ${localDbPort}`);
   else start("database", "npm", ["run", "db:local"]);
-  if (await waitForPort(5433, 20000)) {
+  if (await waitForPort(localDbPort, 20000)) {
     console.log("▶ updating database tables");
     spawnSync("npx", ["prisma", "db", "push", "--skip-generate"], { stdio: "inherit", shell: process.platform === "win32" });
   } else {
