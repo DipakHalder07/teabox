@@ -109,6 +109,7 @@ export async function alertNewCheckout(sessionId: string, baseUrl: string) {
 
 /** Email to the shop owner when a customer reaches the payment QR (start time + payment deadline). */
 export async function emailNewCheckout(sessionId: string, baseUrl: string) {
+  if (!(await getToggles()).emailCheckout) return;
   const session = await prisma.paymentSession.findUniqueOrThrow({ where: { id: sessionId } });
   const draft = session.orderDraft as unknown as Draft;
   const dateStr = session.createdAt.toLocaleDateString("en-IN", {

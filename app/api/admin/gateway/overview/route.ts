@@ -7,6 +7,7 @@ import { getGmailStatus } from "@/lib/gateway/gmail";
 import { getGmailSenderStatus } from "@/lib/gateway/gmailSender";
 import { checkoutStage, publicBaseUrl } from "@/lib/gateway/http";
 import { getToggles } from "@/lib/gateway/toggles";
+import { ADMIN_NOTIFICATION_EMAIL } from "@/lib/email";
 import { getAlertSettings } from "@/lib/gateway/alerts";
 import { isLocalUrlOnServer } from "@/lib/dbStatus";
 
@@ -32,6 +33,7 @@ export async function GET(req: NextRequest) {
       alerts: await getAlertSettings().catch(() => ({ enabled: true, number: "" })),
     },
     cronConfigured: Boolean(process.env.CRON_SECRET),
+    adminNotificationEmail: ADMIN_NOTIFICATION_EMAIL,
     publicBaseUrl: publicBaseUrl(req),
     apkUrl: "/downloads/teapay-observer.apk",
   };

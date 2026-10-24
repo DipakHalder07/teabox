@@ -23,7 +23,15 @@ import {
 import { istDateTime, istTime } from "@/lib/istTime";
 
 interface Overview {
-  toggles: { whatsapp: boolean; sms: boolean; gmail: boolean; cod: boolean };
+  toggles: {
+    whatsapp: boolean;
+    sms: boolean;
+    gmail: boolean;
+    cod: boolean;
+    emailCheckout: boolean;
+    emailOrderAdmin: boolean;
+    emailOrderCustomer: boolean;
+  };
   database: boolean;
   databaseHost?: string | null;
   databaseLocal?: boolean;
@@ -37,6 +45,7 @@ interface Overview {
     alerts: { enabled: boolean; number: string };
   };
   cronConfigured: boolean;
+  adminNotificationEmail?: string;
   publicBaseUrl: string;
   apkUrl: string;
   gmail?: { configured: boolean; connected: boolean; email: string | null; lastPollAt: string | null; lastError: string | null };
@@ -154,6 +163,45 @@ function Switch({ on, label, disabled, onChange }: { on: boolean; label: string;
 }
 
 type Act = (action: string, payload?: Record<string, unknown>, success?: string) => Promise<Record<string, unknown> | null>;
+
+/** Which notification emails the shop sends. */
+function EmailNotificationsCard({ data, busy, act }: { data: Overview; busy: string; act: Act }) {
+  const rows = [
+    { key: "emailCheckout", title: "Checkout started", detail: "Email me when a customer reaches the payment QR, with start time and the 10-minute deadline." },
+    { key: "emailOrderAdmin", title: "New order", detail: "Email me each new order (paid UPI or COD)." },
+    { key: "emailOrderCustomer", title: "Customer order confirmation", detail: "Email the customer their order details, if they gave an email." },
+  ] as const;
+
+  return (
+    <Card>
+      <CardTitle icon={Mail} title="Email notifications" />
+      <p className="text-[12px] text-[#747576] mb-3">
+        Sent to <strong>{data.adminNotificationEmail || "the shop email"}</strong>. Login code emails are always sent.
+      </p>
+      <div className="divide-y divide-[#f0ede6]">
+        {rows.map((row) => {
+          const on = data.toggles[row.key];
+          return (
+            <div key={row.key} className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
+              <div>
+                <div className="text-[13px] font-semibold text-[#202020]">{row.title}</div>
+                <div className="text-[12px] text-[#5c5a52]">{row.detail}</div>
+              </div>
+              <Switch
+                on={on}
+                label={row.title}
+                disabled={busy !== ""}
+                onChange={(next) =>
+                  act("toggle", { key: row.key, enabled: next }, `${row.title} emails turned ${next ? "on" : "off"}`)
+                }
+              />
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
 
 /** Lets customers choose Cash on Delivery at checkout, or not. */
 function CodCard({ data, busy, act }: { data: Overview; busy: string; act: Act }) {
@@ -923,6 +971,8 @@ export default function AdminPaymentGatewayPage() {
                 </div>
               )}
             </Card>
+
+            <EmailNotificationsCard data={data} busy={busy} act={act} />
 
             <WhatsAppCard data={data} busy={busy} act={act} />
           </div>

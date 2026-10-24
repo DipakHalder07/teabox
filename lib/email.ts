@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { sendViaGmailApi } from "@/lib/gateway/gmailSender";
+import { getToggles } from "@/lib/gateway/toggles";
 
 /**
  * Transactional & Admin Order Notification Email Dispatcher for Teabox
@@ -430,17 +431,20 @@ export async function sendOrderConfirmationEmail(
   order: OrderEmailDetails
 ): Promise<{ success: boolean }> {
   try {
-    const adminHtml = buildAdminOrderNotificationHtml(order);
+    // Each email can be switched off in Admin → Payment Gateway → Email notifications
+    const toggles = await getToggles();
 
-    // 1. ALWAYS dispatch to admin
-    await dispatchEmail({
-      to: ADMIN_NOTIFICATION_EMAIL,
-      subject: `🚨 New Teabox Order Received: #${order.orderNumber} (₹${order.totalAmount} - ${order.paymentMethod.toUpperCase()})`,
-      html: adminHtml,
-    });
+    // 1. Dispatch to admin
+    if (toggles.emailOrderAdmin) {
+      await dispatchEmail({
+        to: ADMIN_NOTIFICATION_EMAIL,
+        subject: `🚨 New Teabox Order Received: #${order.orderNumber} (₹${order.totalAmount} - ${order.paymentMethod.toUpperCase()})`,
+        html: buildAdminOrderNotificationHtml(order),
+      });
+    }
 
     // 2. If customer provided an email address, also dispatch confirmation to them
-    if (order.customerEmail && order.customerEmail.includes("@")) {
+    if (toggles.emailOrderCustomer && order.customerEmail && order.customerEmail.includes("@")) {
       await dispatchEmail({
         to: order.customerEmail,
         subject: `Order Confirmed: #${order.orderNumber} - Teabox`,
