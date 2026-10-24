@@ -730,7 +730,7 @@ export default function CheckoutPage() {
           /* ================= STEP 1 & 2: 2-COLUMN CHECKOUT ================= */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* Left Column: Form & Payment Step (7 cols) */}
-            <div className="lg:col-span-7 bg-white border border-[#e7e2d8] rounded-xl sm:rounded-2xl p-4 sm:p-7 shadow-sm">
+            <div className="lg:col-span-7 bg-transparent sm:bg-white border-0 sm:border border-[#e7e2d8] rounded-none sm:rounded-2xl p-0 sm:p-7 shadow-none sm:shadow-sm">
               <AnimatePresence mode="wait">
                 {/* ================= STEP 1: ADDRESS ================= */}
                 {effectiveStep === 1 && (
@@ -940,7 +940,7 @@ export default function CheckoutPage() {
                     className="space-y-6"
                   >
                     {/* Delivery Address Summary Bar */}
-                    <div className="bg-[#fafafa] border border-[#e7e2d8] rounded-xl p-3 sm:p-3.5 flex items-center justify-between gap-2.5 sm:gap-3 text-[13px]">
+                    <div className="bg-white border border-[#e7e2d8] rounded-xl p-3 sm:p-3.5 flex items-center justify-between gap-2.5 sm:gap-3 text-[13px]">
                       <div className="flex-1 min-w-0">
                         <span className="font-bold text-[#202020] block truncate">
                           {formValues.fullName} · {formValues.phone}
