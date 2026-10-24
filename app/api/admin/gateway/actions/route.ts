@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { createPairingQr } from "@/lib/gateway/android";
 import { assignCredit, cancelSession, GatewayError, markSessionPaid } from "@/lib/gateway/payments";
 import { disconnectGmail, pollGmail } from "@/lib/gateway/gmail";
+import { disconnectGmailSender, getGmailSenderStatus } from "@/lib/gateway/gmailSender";
+import { dispatchEmail } from "@/lib/email";
 import {
   logoutWhatsApp,
   requestWhatsAppPairingCode,
@@ -71,6 +73,21 @@ export async function POST(req: NextRequest) {
       case "gmail-disconnect":
         await disconnectGmail();
         return NextResponse.json({ success: true });
+
+      case "gmail-sender-disconnect":
+        await disconnectGmailSender();
+        return NextResponse.json({ success: true });
+
+      case "gmail-sender-test": {
+        const to = (await getGmailSenderStatus()).email || admin.email;
+        const sent = await dispatchEmail({
+          to,
+          subject: "Teabox test email",
+          html: "<p>Your shop can send login codes and order emails from this Gmail.</p>",
+        });
+        if (!sent.success) throw new GatewayError(sent.error || "Email send failed", 502);
+        return NextResponse.json({ success: true, to });
+      }
 
       case "whatsapp-test": {
         const phone = cleanIndianPhone(String(body.phone || ""));

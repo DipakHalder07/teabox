@@ -246,26 +246,33 @@ export async function markSessionPaid(
         void task(); // outside a request (scripts)
       }
     }
-    sendOrderConfirmationEmail({
-      orderNumber: result.orderNumber,
-      customerName: result.customerName,
-      customerPhone: result.customerPhone,
-      customerEmail: result.customerEmail,
-      items: result.items,
-      subtotal: result.subtotal,
-      discountAmount: result.discountAmount,
-      shippingFee: result.shippingFee,
-      codFee: result.codFee,
-      totalAmount: result.totalAmount,
-      paymentMethod: "upi",
-      paymentStatus: "PAID",
-      utrNumber: result.utrNumber,
-      address: result.address,
-      city: result.city,
-      state: result.state,
-      pincode: result.pincode,
-      landmark: result.landmark,
-    }).catch((e) => console.warn("[TeaPay] Order email failed:", e));
+    const emailTask = () =>
+      sendOrderConfirmationEmail({
+        orderNumber: result.orderNumber,
+        customerName: result.customerName,
+        customerPhone: result.customerPhone,
+        customerEmail: result.customerEmail,
+        items: result.items,
+        subtotal: result.subtotal,
+        discountAmount: result.discountAmount,
+        shippingFee: result.shippingFee,
+        codFee: result.codFee,
+        totalAmount: result.totalAmount,
+        paymentMethod: "upi",
+        paymentStatus: "PAID",
+        utrNumber: result.utrNumber,
+        address: result.address,
+        city: result.city,
+        state: result.state,
+        pincode: result.pincode,
+        landmark: result.landmark,
+      }).catch((e) => console.warn("[TeaPay] Order email failed:", e));
+    // Admin + customer order emails, after the response like the WhatsApp alert above
+    try {
+      after(emailTask);
+    } catch {
+      void emailTask(); // outside a request (scripts)
+    }
   }
   return result;
 }

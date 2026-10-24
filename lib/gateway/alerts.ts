@@ -1,5 +1,6 @@
 import { PaymentSession } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { sendCheckoutStartedEmail } from "@/lib/email";
 import { whatsAppProvider } from "./config";
 import { signValue } from "./crypto";
 import { getSetting, setSetting } from "./settings";
@@ -46,6 +47,7 @@ const clock = (d: Date) =>
 interface Draft {
   customerName: string;
   customerPhone: string;
+  customerEmail?: string | null;
   address: string;
   city: string;
   pincode: string;
@@ -103,6 +105,34 @@ export async function alertNewCheckout(sessionId: string, baseUrl: string) {
 
   await sendWhatsAppText(to, text);
   console.log(`[TeaPay] Order alert for ${session.orderNumber} sent to +${to}`);
+}
+
+/** Email to the shop owner when a customer reaches the payment QR (start time + payment deadline). */
+export async function emailNewCheckout(sessionId: string, baseUrl: string) {
+  const session = await prisma.paymentSession.findUniqueOrThrow({ where: { id: sessionId } });
+  const draft = session.orderDraft as unknown as Draft;
+  const dateStr = session.createdAt.toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  const result = await sendCheckoutStartedEmail({
+    orderNumber: session.orderNumber,
+    customerName: draft.customerName,
+    customerPhone: draft.customerPhone,
+    customerEmail: draft.customerEmail,
+    address: `${draft.address}, ${draft.city} - ${draft.pincode}${draft.landmark ? ` (near ${draft.landmark})` : ""}`,
+    items: draft.priced.items.map((i) => `${i.title}${i.weight ? ` (${i.weight})` : ""} ×${i.quantity}`),
+    payAmount: rupees(session.payPaise),
+    orderTotal: rupees(session.orderPaise),
+    startedAt: `${clock(session.createdAt)}, ${dateStr}`,
+    expiresAt: clock(session.expiresAt),
+    windowMinutes: Math.round((session.expiresAt.getTime() - session.createdAt.getTime()) / 60000),
+    reviewUrl: reviewLink(baseUrl, session.id),
+  });
+  if (!result.success) throw new Error(result.error || "Email send failed");
 }
 
 /** Sent when a Cash on Delivery (COD) order is placed. */

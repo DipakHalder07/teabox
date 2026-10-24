@@ -114,10 +114,10 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               >
                 <Link
                   href="/collections/all"
-                  className={`relative py-5 flex items-center gap-1.5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#202020] hover:text-[#016c2f] transition-colors after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-1 after:h-[2.5px] after:bg-[#1A1A18] after:transition-opacity after:duration-150 ${
+                  className={`py-5 flex items-center gap-1.5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] transition-colors ${
                     activeMega === "shop" || pathname === "/collections/all" || (pathname?.startsWith("/collections") && pathname !== "/collections/trial-packs" && pathname !== "/collections/chai" && pathname !== "/collections/green-tea" && pathname !== "/collections/gifts")
-                      ? "after:opacity-100 text-[#016c2f]"
-                      : "after:opacity-0"
+                      ? "text-[#016c2f]"
+                      : "text-[#202020] hover:text-[#016c2f]"
                   }`}
                 >
                   <span>Shop Teas</span>
@@ -134,41 +134,37 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               {/* Direct links */}
               <Link
                 href="/collections/trial-packs"
-                className={`relative py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#202020] hover:text-[#016c2f] transition-colors whitespace-nowrap after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-1 after:h-[2.5px] after:bg-[#1A1A18] after:transition-opacity after:duration-150 ${
+                className={`py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] transition-colors whitespace-nowrap ${
                   pathname === "/collections/trial-packs"
-                    ? "after:opacity-100 text-[#016c2f]"
-                    : "after:opacity-0"
+                    ? "text-[#016c2f]"
+                    : "text-[#202020] hover:text-[#016c2f]"
                 }`}
               >
                 Trial Packs
               </Link>
               <Link
                 href="/collections/chai"
-                className={`relative py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#202020] hover:text-[#016c2f] transition-colors whitespace-nowrap after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-1 after:h-[2.5px] after:bg-[#1A1A18] after:transition-opacity after:duration-150 ${
+                className={`py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] transition-colors whitespace-nowrap ${
                   pathname === "/collections/chai"
-                    ? "after:opacity-100 text-[#016c2f]"
-                    : "after:opacity-0"
+                    ? "text-[#016c2f]"
+                    : "text-[#202020] hover:text-[#016c2f]"
                 }`}
               >
                 Chai
               </Link>
               <Link
                 href="/collections/green-tea"
-                className={`relative py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#202020] hover:text-[#016c2f] transition-colors whitespace-nowrap after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-1 after:h-[2.5px] after:bg-[#1A1A18] after:transition-opacity after:duration-150 ${
+                className={`py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] transition-colors whitespace-nowrap ${
                   pathname === "/collections/green-tea"
-                    ? "after:opacity-100 text-[#016c2f]"
-                    : "after:opacity-0"
+                    ? "text-[#016c2f]"
+                    : "text-[#202020] hover:text-[#016c2f]"
                 }`}
               >
                 Green
               </Link>
               <Link
                 href="/collections/all"
-                className={`relative py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#c87a1d] hover:opacity-85 transition-opacity whitespace-nowrap after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-1 after:h-[2.5px] after:bg-[#c87a1d] after:transition-opacity after:duration-150 ${
-                  pathname === "/collections/limited-edition"
-                    ? "after:opacity-100"
-                    : "after:opacity-0"
-                }`}
+                className="py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#c87a1d] hover:opacity-85 transition-opacity whitespace-nowrap"
               >
                 Limited Edition
               </Link>
@@ -184,10 +180,10 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               >
                 <button
                   type="button"
-                  className={`relative py-5 flex items-center gap-1.5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#202020] hover:text-[#016c2f] transition-colors cursor-pointer after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-1 after:h-[2.5px] after:bg-[#1A1A18] after:transition-opacity after:duration-150 ${
+                  className={`py-5 flex items-center gap-1.5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] transition-colors cursor-pointer ${
                     activeDropdown === "gifts" || pathname?.startsWith("/collections/gifts")
-                      ? "after:opacity-100 text-[#016c2f]"
-                      : "after:opacity-0"
+                      ? "text-[#016c2f]"
+                      : "text-[#202020] hover:text-[#016c2f]"
                   }`}
                 >
                   <span>Gifts</span>
@@ -244,10 +240,10 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               {/* Why Teabox */}
               <Link
                 href="/pages/why-teabox"
-                className={`relative py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#202020] hover:text-[#016c2f] transition-colors whitespace-nowrap after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-1 after:h-[2.5px] after:bg-[#1A1A18] after:transition-opacity after:duration-150 ${
+                className={`py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] transition-colors whitespace-nowrap ${
                   pathname === "/pages/why-teabox"
-                    ? "after:opacity-100 text-[#016c2f]"
-                    : "after:opacity-0"
+                    ? "text-[#016c2f]"
+                    : "text-[#202020] hover:text-[#016c2f]"
                 }`}
               >
                 Why Teabox

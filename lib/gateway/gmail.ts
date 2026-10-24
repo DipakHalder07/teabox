@@ -33,7 +33,7 @@ export function gmailAuthUrl(redirectUri: string, state: string) {
   return `${c.authBase}/o/oauth2/v2/auth?${params}`;
 }
 
-async function tokenRequest(params: Record<string, string>) {
+export async function tokenRequest(params: Record<string, string>) {
   const c = getGoogleConfig();
   const res = await fetch(c.tokenUrl, {
     method: "POST",
@@ -43,7 +43,7 @@ async function tokenRequest(params: Record<string, string>) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error_description || data?.error || `Google token error ${res.status}`);
-  return data as { access_token: string; refresh_token?: string };
+  return data as { access_token: string; refresh_token?: string; expires_in?: number; id_token?: string };
 }
 
 async function gmailGet<T>(path: string, accessToken: string): Promise<T> {

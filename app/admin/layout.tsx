@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Radio,
   Lock,
+  Users,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -102,6 +103,12 @@ export default function AdminLayout({
       href: "/admin/orders",
       icon: ShoppingBag,
       active: pathname.startsWith("/admin/orders"),
+    },
+    {
+      label: "Customers",
+      href: "/admin/customers",
+      icon: Users,
+      active: pathname.startsWith("/admin/customers"),
     },
     {
       label: "Products & Stock",

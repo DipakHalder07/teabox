@@ -52,15 +52,28 @@ export async function POST(req: NextRequest) {
       `[Teabox Auth] 6-digit OTP generated & dispatched for ${email} (mock: ${!!emailResult.isDevMock})`
     );
 
-    // If running in development or when mock mode is active, include devCode for effortless testing
-    const isDev = process.env.NODE_ENV !== "production";
-    const includeDevCode = isDev || emailResult.isDevMock;
+    // No email provider configured: show the code on screen in development only. In production
+    // that would let anyone sign in as any email, so refuse instead.
+    if (emailResult.isDevMock) {
+      if (process.env.NODE_ENV === "production") {
+        return NextResponse.json(
+          { success: false, error: "Email sign-in is not available right now. Please try again later." },
+          { status: 503 }
+        );
+      }
+      return NextResponse.json({
+        success: true,
+        message: `A 6-digit verification code was sent to ${email}`,
+        cooldownSeconds: 30,
+        devCode: otpResult.code,
+        isDevMock: true,
+      });
+    }
 
     return NextResponse.json({
       success: true,
       message: `A 6-digit verification code was sent to ${email}`,
       cooldownSeconds: 30,
-      ...(includeDevCode ? { devCode: otpResult.code, isDevMock: emailResult.isDevMock } : {}),
     });
   } catch (err) {
     console.error("[Auth API] Error in send-otp:", err);

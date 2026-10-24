@@ -4,6 +4,7 @@ import { prisma, isDatabaseConnected } from "@/lib/prisma";
 import { getUpiConfig, whatsAppProvider } from "@/lib/gateway/config";
 import { getWhatsAppServiceStatus, isOtpRequired } from "@/lib/gateway/whatsapp";
 import { getGmailStatus } from "@/lib/gateway/gmail";
+import { getGmailSenderStatus } from "@/lib/gateway/gmailSender";
 import { checkoutStage, publicBaseUrl } from "@/lib/gateway/http";
 import { getToggles } from "@/lib/gateway/toggles";
 import { getAlertSettings } from "@/lib/gateway/alerts";
@@ -54,8 +55,9 @@ export async function GET(req: NextRequest) {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
-  const [gmail, devices, sessions, unmatched, paidToday, waiting, phoneFeed] = await Promise.all([
+  const [gmail, gmailSender, devices, sessions, unmatched, paidToday, waiting, phoneFeed] = await Promise.all([
     getGmailStatus(),
+    getGmailSenderStatus(),
     prisma.observerDevice.findMany({ where: { isActive: true }, orderBy: { createdAt: "desc" } }),
     prisma.paymentSession.findMany({ orderBy: { createdAt: "desc" }, take: 40 }),
     prisma.creditEvent.findMany({ where: { sessionId: null }, orderBy: { observedAt: "desc" }, take: 30 }),
@@ -74,6 +76,7 @@ export async function GET(req: NextRequest) {
     ...base,
     database: true,
     gmail,
+    gmailSender,
     devices: devices.map((d) => ({
       id: d.id,
       name: d.name,

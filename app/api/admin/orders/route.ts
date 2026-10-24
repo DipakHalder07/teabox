@@ -6,6 +6,7 @@ import { orderCreationSchema, cleanIndianPhone } from "@/lib/validations/checkou
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { getSubmittedUtr } from "@/lib/manualUpi";
 import { alertCodOrder } from "@/lib/gateway/alerts";
+import { getCustomerFromRequest } from "@/lib/customerAuth";
 import { publicBaseUrl } from "@/lib/gateway/http";
 import { toPublicOrder } from "@/lib/publicOrder";
 import { getToggles } from "@/lib/gateway/toggles";
@@ -77,6 +78,11 @@ export async function POST(req: NextRequest) {
     }
 
     const body = validationResult.data;
+
+    // Signed-in customer left the email blank: use their account email (profile + confirmation email)
+    if (!body.customerEmail) {
+      body.customerEmail = (await getCustomerFromRequest(req))?.email || null;
+    }
 
     // 1. Prevent duplicate order creation
     const existingOrder = await getOrderById(body.orderNumber);

@@ -40,6 +40,7 @@ interface Overview {
   publicBaseUrl: string;
   apkUrl: string;
   gmail?: { configured: boolean; connected: boolean; email: string | null; lastPollAt: string | null; lastError: string | null };
+  gmailSender?: { configured: boolean; connected: boolean; email: string | null; lastError: string | null };
   devices?: Array<{
     id: string;
     name: string;
@@ -474,7 +475,10 @@ export default function AdminPaymentGatewayPage() {
       if (gmail === "connected") toast.success("Gmail connected", { description: params.get("email") || undefined });
       if (gmail === "error") toast.error("Gmail was not connected", { description: params.get("message") || undefined });
       if (gmail === "not-configured") toast.error("Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET first");
-      if (gmail) window.history.replaceState(null, "", window.location.pathname);
+      const gmailSend = params.get("gmailSend");
+      if (gmailSend === "connected") toast.success("Sending Gmail connected", { description: params.get("email") || undefined });
+      if (gmailSend === "error") toast.error("Sending Gmail was not connected", { description: params.get("message") || undefined });
+      if (gmail || gmailSend) window.history.replaceState(null, "", window.location.pathname);
     }, 0);
     return () => clearTimeout(first);
   }, [load]);
@@ -865,6 +869,55 @@ export default function AdminPaymentGatewayPage() {
                     DKIM-verified bank emails are used.
                   </p>
                   <a href="/api/admin/gateway/gmail/connect" className={buttonDark}>
+                    <Mail size={14} /> Sign in with Google
+                  </a>
+                </div>
+              )}
+            </Card>
+
+            <Card>
+              <CardTitle icon={Send} title="Login code emails" />
+              {!data.gmailSender?.configured ? (
+                <div className="text-[12.5px] text-[#5c5a52] space-y-2">
+                  <p>
+                    Create a Google OAuth app with the Gmail API enabled, then set <code>GOOGLE_CLIENT_ID</code> and{" "}
+                    <code>GOOGLE_CLIENT_SECRET</code>. Add this redirect URI:
+                  </p>
+                  <code className="block break-all bg-[#fafafa] border border-[#e7e2d8] rounded-lg px-2 py-1.5 text-[11.5px]">{gmailRedirect}</code>
+                </div>
+              ) : data.gmailSender.connected ? (
+                <div className="space-y-3">
+                  <div className="text-[13px] text-[#202020]">
+                    Login codes and order emails are sent from <strong>{data.gmailSender.email}</strong>
+                  </div>
+                  {data.gmailSender.lastError && <div className="text-[12px] text-[#c62828]">{data.gmailSender.lastError}</div>}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={async () => {
+                        const result = await act("gmail-sender-test");
+                        if (result?.to) toast.success("Test email sent", { description: result.to });
+                      }}
+                      disabled={busy !== ""}
+                      className={buttonDark}
+                    >
+                      <Send size={14} /> Send test email
+                    </button>
+                    <button
+                      onClick={() => window.confirm("Stop sending emails from this Gmail?") && act("gmail-sender-disconnect", {}, "Sending Gmail disconnected")}
+                      disabled={busy !== ""}
+                      className={buttonLight}
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-[12.5px] text-[#5c5a52]">
+                    Sign in with the Gmail account that should send customers their login codes. No password is
+                    stored; this permission can only send email, not read your inbox.
+                  </p>
+                  <a href="/api/admin/gateway/gmail/connect?purpose=send" className={buttonDark}>
                     <Mail size={14} /> Sign in with Google
                   </a>
                 </div>

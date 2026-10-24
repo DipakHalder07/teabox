@@ -1,20 +1,40 @@
 "use client";
 
 import React, { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { ChevronDown, ArrowRight, Check } from "lucide-react";
+import { ChevronDown, ArrowRight, Check, Loader2 } from "lucide-react";
 
 export default function Footer() {
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [openAccordion, setOpenAccordion] = useState<string | null>(null);
 
-  const handleSubscribe = (e: React.FormEvent) => {
+  const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email && email.includes("@")) {
-      setSubscribed(true);
-      setEmail("");
+    if (!email || !email.includes("@")) return;
+
+    setLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch("/api/newsletter/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSubscribed(true);
+        setEmail("");
+      } else {
+        setErrorMessage(data.error || "Subscription failed. Please try again.");
+      }
+    } catch {
+      setErrorMessage("Network error. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -64,99 +84,110 @@ export default function Footer() {
   ];
 
   return (
-    <footer className="w-full bg-[#202020] text-[#c9d6cd] pt-8 pb-5 sm:pt-10 sm:pb-6 px-4 sm:px-8 lg:px-12 font-sans">
-      <div className="max-w-[1440px] mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_repeat(5,minmax(0,1fr))] gap-6 lg:gap-6 xl:gap-8 pb-6 sm:pb-8">
-          {/* Brand & Newsletter Column */}
-          <div className="flex flex-col gap-2.5 max-w-[380px]">
-            {/* Logo: Clean text format */}
-            <Link href="/" className="inline-block py-0.5">
-              <span className="font-stencil text-[24px] font-bold tracking-wider text-white hover:text-[#02cb5a] transition-colors">
-                DEMOBOX
+    <footer className="w-full bg-[#181a18] text-[#c2d0c6] border-t border-white/[0.08] pt-6 pb-4 sm:pt-7 sm:pb-5 px-4 sm:px-8 lg:px-12 font-sans">
+      <div className="max-w-[1380px] mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_repeat(5,minmax(0,1fr))] gap-6 lg:gap-7 xl:gap-8 pb-5 sm:pb-6">
+          {/* Brand & Slim Newsletter Column */}
+          <div className="flex flex-col gap-2 max-w-[340px]">
+            {/* Logo + Tag */}
+            <div className="flex items-center gap-2">
+              <Link href="/" className="inline-block">
+                <span className="font-stencil text-[22px] font-bold tracking-wider text-white hover:text-[#02cb5a] transition-colors">
+                  DEMOBOX
+                </span>
+              </Link>
+              <span className="h-3 w-px bg-white/20" />
+              <span className="text-[10.5px] font-medium tracking-[1px] uppercase text-[#8fa396]">
+                Garden Fresh
               </span>
-            </Link>
+            </div>
 
-            <p className="text-[11.5px] sm:text-[12px] tracking-[1.2px] uppercase text-[#8fa396] font-semibold mt-1">
-              FRESH FROM THE GARDENS OF INDIA.
+            <p className="text-[12px] text-white/80 leading-snug">
+              Be first to know when a fresh harvest lands.
             </p>
 
-            <h3 className="text-[14px] sm:text-[15px] font-bold text-white leading-snug mt-1">
-              Be first to know when a harvest lands
-            </h3>
-
-            {/* Newsletter Form: Slim 40px/42px Box */}
+            {/* Newsletter: Slim 36px Pill */}
             {subscribed ? (
-              <div className="flex items-center gap-2 p-2.5 bg-[#02cb5a]/10 border border-[#02cb5a] rounded-[6px] text-white font-semibold text-[13px]">
-                <Check size={16} className="text-[#02cb5a] shrink-0" />
-                <span>Thank you! We&apos;ll notify you for upcoming harvests.</span>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-[#02cb5a]/10 border border-[#02cb5a]/40 rounded-full text-white font-medium text-[11.5px] max-w-[320px]">
+                <Check size={14} className="text-[#02cb5a] shrink-0" />
+                <span>You&apos;re subscribed for harvest alerts!</span>
               </div>
             ) : (
-              <form
-                onSubmit={handleSubscribe}
-                className="flex items-center h-[40px] sm:h-[42px] border-[1.5px] border-[#02cb5a] rounded-[6px] overflow-hidden bg-transparent focus-within:ring-2 focus-within:ring-[#02cb5a]/30 transition-all mt-0.5"
-              >
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="YOUR EMAIL ADDRESS"
-                  required
-                  className="flex-1 h-full px-3.5 bg-transparent text-white placeholder-white/70 font-bold tracking-[1.5px] text-[12px] uppercase outline-none"
-                />
-                <button
-                  type="submit"
-                  aria-label="Subscribe"
-                  className="px-3.5 h-full text-[#02cb5a] hover:text-white font-bold text-[16px] transition-colors cursor-pointer flex items-center justify-center"
+              <div className="flex flex-col gap-1 max-w-[320px]">
+                <form
+                  onSubmit={handleSubscribe}
+                  className="flex items-center h-[36px] bg-white/[0.04] border border-white/15 hover:border-white/25 focus-within:border-[#02cb5a] focus-within:bg-white/[0.07] rounded-full pl-3.5 pr-1 transition-all"
                 >
-                  <ArrowRight size={18} />
-                </button>
-              </form>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    required
+                    disabled={loading}
+                    className="flex-1 bg-transparent text-white placeholder-white/40 font-normal text-[11.5px] outline-none disabled:opacity-50"
+                  />
+                  <button
+                    type="submit"
+                    aria-label="Subscribe"
+                    disabled={loading}
+                    className="w-7 h-7 rounded-full bg-[#02cb5a] text-black hover:bg-[#00e363] disabled:opacity-75 flex items-center justify-center transition-all cursor-pointer shrink-0"
+                  >
+                    {loading ? (
+                      <Loader2 size={13} className="animate-spin text-black" />
+                    ) : (
+                      <ArrowRight size={13} strokeWidth={2.5} />
+                    )}
+                  </button>
+                </form>
+                {errorMessage && (
+                  <p className="text-[11px] text-red-400 pl-2">{errorMessage}</p>
+                )}
+              </div>
             )}
 
-            <p className="text-[11px] text-[#8fa396]">
-              By signing up you consent to receiving Teabox emails.
-            </p>
-
-            {/* Social Media Links: Slim 32px Buttons */}
-            <div className="flex items-center gap-2 pt-1">
-              <a
-                href="https://facebook.com/teabox.tea"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Follow on Facebook"
-                className="w-8 h-8 border border-[#5f7568] hover:border-[#02cb5a] hover:text-[#02cb5a] text-[#c9d6cd] rounded-[6px] flex items-center justify-center transition-colors"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" />
-                </svg>
-              </a>
-
-              <a
-                href="https://instagram.com/teabox.tea"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Follow on Instagram"
-                className="w-8 h-8 border border-[#5f7568] hover:border-[#02cb5a] hover:text-[#02cb5a] text-[#c9d6cd] rounded-[6px] flex items-center justify-center transition-colors"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
-                </svg>
-              </a>
+            {/* Micro info & Social icons in one tidy row */}
+            <div className="flex items-center justify-between max-w-[320px] pt-0.5 text-[10.5px] text-[#8fa396]">
+              <span>No spam. Opt out anytime.</span>
+              <div className="flex items-center gap-1.5">
+                <a
+                  href="https://facebook.com/teabox.tea"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Follow on Facebook"
+                  className="w-6 h-6 rounded-full border border-white/10 hover:border-[#02cb5a] hover:text-[#02cb5a] text-[#8fa396] flex items-center justify-center transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" />
+                  </svg>
+                </a>
+                <a
+                  href="https://instagram.com/teabox.tea"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Follow on Instagram"
+                  className="w-6 h-6 rounded-full border border-white/10 hover:border-[#02cb5a] hover:text-[#02cb5a] text-[#8fa396] flex items-center justify-center transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+                  </svg>
+                </a>
+              </div>
             </div>
           </div>
 
-          {/* Desktop Link Columns: Tight, refined spacing */}
+          {/* Desktop Link Columns: Slim, clean typography */}
           {footerMenus.map((col) => (
-            <div key={col.title} className="hidden lg:flex flex-col gap-2">
-              <h4 className="text-[12.5px] xl:text-[13px] font-bold tracking-[1.5px] uppercase text-white mb-1.5">
+            <div key={col.title} className="hidden lg:flex flex-col gap-1.5">
+              <h4 className="text-[11px] font-bold tracking-[1.4px] uppercase text-white/95 mb-1">
                 {col.title}
               </h4>
-              <ul className="flex flex-col gap-2 text-[13px] xl:text-[13.5px] text-[#c9d6cd]">
+              <ul className="flex flex-col gap-1 text-[12.5px] text-[#b4c4b9]">
                 {col.links.map((link) => (
                   <li key={link.label}>
                     <Link
                       href={link.href}
-                      className="hover:text-white transition-colors"
+                      className="hover:text-white hover:translate-x-0.5 inline-block transition-all duration-150 py-0.5"
                     >
                       {link.label}
                     </Link>
@@ -167,28 +198,28 @@ export default function Footer() {
           ))}
 
           {/* Mobile Accordion Menus: Slim rows */}
-          <div className="lg:hidden flex flex-col divide-y divide-[#33463a] border-t border-b border-[#33463a] my-1">
+          <div className="lg:hidden flex flex-col divide-y divide-white/[0.07] border-t border-b border-white/[0.07] my-2">
             {footerMenus.map((col) => {
               const isOpen = openAccordion === col.title;
               return (
-                <div key={col.title} className="py-2.5">
+                <div key={col.title} className="py-2">
                   <button
                     type="button"
                     onClick={() =>
                       setOpenAccordion(isOpen ? null : col.title)
                     }
-                    className="w-full flex items-center justify-between font-bold text-[14px] text-white cursor-pointer"
+                    className="w-full flex items-center justify-between font-semibold text-[13px] text-white cursor-pointer"
                   >
                     <span>{col.title}</span>
                     <ChevronDown
-                      size={15}
-                      className={`transition-transform duration-200 ${
+                      size={14}
+                      className={`text-neutral-400 transition-transform duration-200 ${
                         isOpen ? "rotate-180 text-[#02cb5a]" : ""
                       }`}
                     />
                   </button>
                   {isOpen && (
-                    <ul className="flex flex-col gap-1.5 pt-2 pl-1 text-[13px] text-[#c9d6cd]">
+                    <ul className="flex flex-col gap-1 pt-1.5 pb-0.5 pl-1 text-[12px] text-[#b4c4b9]">
                       {col.links.map((link) => (
                         <li key={link.label}>
                           <Link href={link.href} className="hover:text-white block py-0.5">
@@ -204,13 +235,18 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* Slim Copyright & Legal Row matching live site */}
-        <div className="pt-4 border-t border-[#33463a]/60 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-[12px] text-[#8fa396]">
-          <p>© 2026 Teabox · Siliguri, India - the doorstep of Darjeeling · Prices in INR</p>
-          <div className="flex items-center gap-3 text-[11.5px] text-[#8fa396]">
-            <span>100% Direct Estate Teas</span>
-            <span>·</span>
+        {/* Slim Copyright & Trust Row */}
+        <div className="pt-3 border-t border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-[#8fa396]">
+          <p>© 2026 DEMOBOX · Siliguri, India · Doorstep of Darjeeling</p>
+          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 text-[11px] text-[#8fa396]">
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#02cb5a]" />
+              100% Direct Estate Teas
+            </span>
+            <span className="hidden sm:inline">·</span>
             <span>Vacuum Sealed in 48h</span>
+            <span className="hidden sm:inline">·</span>
+            <span>Prices in INR</span>
           </div>
         </div>
       </div>

@@ -3,7 +3,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Check, ArrowRight, Mail, Lock, KeyRound, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, ArrowRight, Mail, Lock, KeyRound, Loader2, ClipboardPaste } from "lucide-react";
 import { toast } from "sonner";
 import SiteLayoutWrapper from "@/components/SiteLayoutWrapper";
 import {
@@ -15,6 +16,7 @@ import { useCart } from "@/components/context/CartContext";
 
 export default function LoginPage() {
   const { mergeCartItems, clearCart, cartItems } = useCart();
+  const router = useRouter();
 
   // Mode: "quick" (Instant Email Verification Code), "password" (traditional), "register", "forgot"
   const [viewMode, setViewMode] = useState<"quick" | "password" | "register" | "forgot">("quick");
@@ -48,10 +50,12 @@ export default function LoginPage() {
         if (parsed?.email) {
           setIsLoggedIn(true);
           setLoggedInUser(parsed.email);
+          // Already signed in: go to My Orders
+          if (document.cookie.includes("teabox_customer_session=")) router.replace("/account");
         }
       }
     } catch {}
-  }, []);
+  }, [router]);
 
   // Cooldown countdown timer for Resend Code
   useEffect(() => {
@@ -175,10 +179,36 @@ export default function LoginPage() {
       toast.success("Welcome to Teabox!", {
         description: `Signed in as ${authenticatedEmail}`,
       });
+      router.push("/account");
     } catch {
       setInlineError("Verification service error. Please try again.");
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  // A whole code arrived at once (paste, keyboard suggestion, iOS autofill from Mail): fill every box
+  const fillOtpCode = (raw: string) => {
+    const digits = raw.replace(/\D/g, "").slice(0, 6);
+    if (!digits) return false;
+    const newOtp = ["", "", "", "", "", ""];
+    for (let i = 0; i < digits.length; i++) newOtp[i] = digits[i];
+    setOtpCode(newOtp);
+    if (digits.length === 6) {
+      handleVerifyEmailOtp(undefined, digits);
+    } else {
+      otpInputsRef.current[Math.min(digits.length, 5)]?.focus();
+    }
+    return true;
+  };
+
+  const handlePasteButton = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!fillOtpCode(text)) toast.error("No code found. Copy the 6-digit code from the email first.");
+    } catch {
+      toast.error("Couldn't read the clipboard", { description: "Long-press the first box and choose Paste." });
+      otpInputsRef.current[0]?.focus();
     }
   };
 
@@ -328,8 +358,8 @@ export default function LoginPage() {
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-[#5c5a52]">Order History</span>
-                <Link href="/track" className="font-bold text-[#1f3a2c] underline">
-                  Track Past Orders →
+                <Link href="/account" className="font-bold text-[#1f3a2c] underline">
+                  My Orders →
                 </Link>
               </div>
             </div>
@@ -478,7 +508,7 @@ export default function LoginPage() {
                             </span>
                           </div>
                           <span className="block text-[11px] text-[#15803d] mt-0.5">
-                            Set GMAIL_USER &amp; GMAIL_APP_PASSWORD in .env for live inbox delivery
+                            No email was sent: Gmail isn&apos;t set up yet, or restart the dev server after editing .env
                           </span>
                         </div>
                         <button
@@ -505,12 +535,18 @@ export default function LoginPage() {
                           }}
                           type="text"
                           inputMode="numeric"
-                          maxLength={1}
+                          // Lets iPhone/Mac offer the code from Mail above the keyboard
+                          autoComplete={index === 0 ? "one-time-code" : "off"}
+                          aria-label={`Digit ${index + 1}`}
                           required
                           disabled={isVerifying}
                           value={otpCode[index]}
                           onChange={(e) => {
                             const val = e.target.value.replace(/\D/g, "");
+                            if (val.length >= 6) {
+                              fillOtpCode(val);
+                              return;
+                            }
                             const newOtp = [...otpCode];
                             newOtp[index] = val ? val.slice(-1) : "";
                             setOtpCode(newOtp);
@@ -533,25 +569,21 @@ export default function LoginPage() {
                           }}
                           onPaste={(e) => {
                             e.preventDefault();
-                            const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
-                            if (pasted.length > 0) {
-                              const newOtp = [...otpCode];
-                              for (let i = 0; i < pasted.length; i++) {
-                                newOtp[i] = pasted[i];
-                              }
-                              setOtpCode(newOtp);
-                              if (pasted.length === 6) {
-                                handleVerifyEmailOtp(undefined, pasted);
-                              } else {
-                                const focusIndex = Math.min(pasted.length, 5);
-                                otpInputsRef.current[focusIndex]?.focus();
-                              }
-                            }
+                            fillOtpCode(e.clipboardData.getData("text"));
                           }}
                           className="w-11 h-14 sm:w-13 sm:h-15 text-center text-[22px] sm:text-[24px] font-bold border-2 border-[#1f3a2c] focus:border-[#02cb5a] rounded-xl outline-none focus:ring-2 focus:ring-[#02cb5a]/20 bg-white shadow-2xs transition-all disabled:opacity-60"
                         />
                       ))}
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={handlePasteButton}
+                      disabled={isVerifying}
+                      className="-mt-2 mx-auto flex items-center gap-1.5 text-[12.5px] font-semibold text-[#1f3a2c] border border-[#d6d3cb] hover:border-[#1f3a2c] rounded-lg px-3 py-1.5 transition-colors cursor-pointer disabled:opacity-60"
+                    >
+                      <ClipboardPaste size={14} /> Paste code from email
+                    </button>
 
                     {inlineError && (
                       <p className="text-[12.5px] font-semibold text-[#c53030] bg-[#fff5f5] border border-[#feb2b2] rounded-lg p-2.5 text-center">

@@ -1,9 +1,10 @@
 import nodemailer from "nodemailer";
+import { sendViaGmailApi } from "@/lib/gateway/gmailSender";
 
 /**
  * Transactional & Admin Order Notification Email Dispatcher for Teabox
  * Automatically routes order notifications to dipakh810@gmail.com
- * Supports Nodemailer (Gmail / SMTP), Resend API, and fallback development logging.
+ * Supports Gmail API (Sign in with Google), Nodemailer (Gmail / SMTP), Resend API, and fallback development logging.
  */
 
 export const ADMIN_NOTIFICATION_EMAIL =
@@ -34,6 +35,32 @@ export interface OrderEmailDetails {
   state: string;
   pincode: string;
   landmark?: string | null;
+}
+
+const STORE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://teabox-by-dipak.vercel.app";
+
+/** Customer-typed text (name, address…) is escaped before it goes into an email. */
+function esc(value: string | number | null | undefined) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export interface CheckoutStartedDetails {
+  orderNumber: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail?: string | null;
+  address: string;
+  items: string[];
+  payAmount: string;
+  orderTotal: string;
+  startedAt: string; // e.g. "10:38 pm, 24 Oct 2026"
+  expiresAt: string; // e.g. "10:48 pm"
+  windowMinutes: number;
+  reviewUrl: string;
 }
 
 /**
@@ -171,7 +198,7 @@ function buildAdminOrderNotificationHtml(order: OrderEmailDetails): string {
             </div>
 
             <div style="text-align: center; margin-top: 24px;">
-              <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://teabox-by-dipak.vercel.app"}/admin/orders" class="cta-btn">
+              <a href="${STORE_URL}/admin/orders" class="cta-btn">
                 Open Admin Orders Dashboard →
               </a>
             </div>
@@ -186,18 +213,37 @@ function buildAdminOrderNotificationHtml(order: OrderEmailDetails): string {
 }
 
 /**
- * Dispatch an email to a recipient via Nodemailer (Gmail / SMTP), Resend, or Dev Fallback
+ * Dispatch an email to a recipient via Gmail API, Nodemailer (Gmail / SMTP), Resend, or Dev Fallback
  */
 export async function dispatchEmail({
   to,
   subject,
   html,
+  text,
 }: {
   to: string;
   subject: string;
   html: string;
+  text?: string;
 }): Promise<{ success: boolean; messageId?: string; isDevMock?: boolean; error?: string }> {
-  // 1. Try Nodemailer / Gmail SMTP
+  // 1. Try Gmail connected with "Sign in with Google" (admin → Payment Gateway, no password needed)
+  try {
+    const sent = await sendViaGmailApi({ to, subject, html, text, fromName: "Teabox" });
+    if (sent) {
+      console.log(`[Email / Gmail API] Successfully sent to ${to} from ${sent.from}: ${sent.id}`);
+      return { success: true, messageId: sent.id, isDevMock: false };
+    }
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(`[Email / Gmail API] Failed to send to ${to}:`, errorMessage);
+    return {
+      success: false,
+      error: `Gmail sending failed: ${errorMessage}. Reconnect the sending Gmail in Admin → Payment Gateway.`,
+      isDevMock: false,
+    };
+  }
+
+  // 2. Try Nodemailer / Gmail SMTP
   const smtpTransporter = getSmtpTransporter();
   if (smtpTransporter) {
     try {
@@ -207,6 +253,7 @@ export async function dispatchEmail({
         to,
         subject,
         html,
+        text,
       });
       console.log(`[Email / Gmail SMTP] Successfully sent to ${to}: ${info.messageId}`);
       return { success: true, messageId: info.messageId, isDevMock: false };
@@ -221,7 +268,7 @@ export async function dispatchEmail({
     }
   }
 
-  // 2. Try Resend API if configured
+  // 3. Try Resend API if configured
   const resendApiKey = process.env.RESEND_API_KEY;
   if (resendApiKey) {
     try {
@@ -236,6 +283,7 @@ export async function dispatchEmail({
           to: [to],
           subject,
           html,
+          text,
         }),
       });
       const data = await response.json();
@@ -248,11 +296,131 @@ export async function dispatchEmail({
     }
   }
 
-  // 3. Graceful Dev Fallback (When Gmail credentials are not yet configured in local development)
+  // 4. Graceful Dev Fallback (When Gmail credentials are not yet configured in local development)
   console.log(
-    `[Email / Dev Mode] Email prepared for ${to} | Subject: "${subject}" (GMAIL_USER or GMAIL_APP_PASSWORD not set in .env)`
+    `[Email / Dev Mode] Email prepared for ${to} | Subject: "${subject}" (no Gmail connected and GMAIL_USER / GMAIL_APP_PASSWORD not set in .env)`
   );
   return { success: true, messageId: `mock_${Date.now()}`, isDevMock: true };
+}
+
+/**
+ * Shop owner alert: a customer reached the payment QR. Gmail on the phone shows it as a notification.
+ */
+export async function sendCheckoutStartedEmail(c: CheckoutStartedDetails) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head><meta charset="utf-8"><title>Checkout started: ${esc(c.orderNumber)}</title></head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f7f5f0; margin: 0; padding: 24px; color: #202020;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e7e2d8; border-radius: 12px; overflow: hidden;">
+          <div style="background: #1f3a2c; color: #ffffff; padding: 22px 24px;">
+            <div style="font-size: 12px; letter-spacing: 1px; color: #a3c4b2; text-transform: uppercase; font-weight: 700;">Checkout started · QR shown</div>
+            <div style="font-size: 22px; font-weight: 800; margin-top: 4px;">Order #${esc(c.orderNumber)}</div>
+          </div>
+          <div style="padding: 22px 24px;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <tr><td style="padding: 6px 0; color: #5c5a52;">Started</td><td style="padding: 6px 0; text-align: right; font-weight: 700;">${esc(c.startedAt)}</td></tr>
+              <tr><td style="padding: 6px 0; color: #5c5a52;">Payment window</td><td style="padding: 6px 0; text-align: right; font-weight: 700;">${c.windowMinutes} min · ends ${esc(c.expiresAt)}</td></tr>
+              <tr><td style="padding: 6px 0; color: #5c5a52;">Customer pays</td><td style="padding: 6px 0; text-align: right; font-weight: 800; font-size: 18px; color: #016c2f;">${esc(c.payAmount)}</td></tr>
+              <tr><td style="padding: 6px 0; color: #5c5a52;">Order total</td><td style="padding: 6px 0; text-align: right;">${esc(c.orderTotal)}</td></tr>
+            </table>
+            <div style="background: #fafafa; border: 1px solid #e7e2d8; border-radius: 8px; padding: 14px; margin-top: 16px; font-size: 13.5px; line-height: 1.6;">
+              <strong>${esc(c.customerName)}</strong> · +91 ${esc(c.customerPhone)}${c.customerEmail ? ` · ${esc(c.customerEmail)}` : ""}<br>
+              ${esc(c.address)}<br><br>
+              ${c.items.map((i) => `• ${esc(i)}`).join("<br>")}
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+              <a href="${esc(c.reviewUrl)}" style="display: inline-block; background: #02cb5a; color: #1f3a2c; font-weight: 800; font-size: 14px; padding: 13px 26px; border-radius: 8px; text-decoration: none;">Review &amp; confirm payment →</a>
+            </div>
+            <p style="font-size: 12px; color: #747576; text-align: center; margin: 14px 0 0;">The order confirms automatically when the money arrives. You'll get another email then.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+  const text = [
+    `Checkout started: order #${c.orderNumber}`,
+    `Started: ${c.startedAt}`,
+    `Payment window: ${c.windowMinutes} min (ends ${c.expiresAt})`,
+    `Customer pays: ${c.payAmount} (order total ${c.orderTotal})`,
+    `${c.customerName}, +91 ${c.customerPhone}`,
+    c.address,
+    ...c.items.map((i) => `- ${i}`),
+    `Review: ${c.reviewUrl}`,
+  ].join("\n");
+
+  return dispatchEmail({
+    to: ADMIN_NOTIFICATION_EMAIL,
+    subject: `🛒 Checkout started #${c.orderNumber} · ${c.payAmount} · pay by ${c.expiresAt}`,
+    html,
+    text,
+  });
+}
+
+/**
+ * The customer's own order confirmation (no admin links or internal notes).
+ */
+function buildCustomerOrderConfirmationHtml(order: OrderEmailDetails): string {
+  const paid = order.paymentStatus === "PAID";
+  const paymentLine =
+    order.paymentMethod === "cod"
+      ? `Cash on Delivery: please keep ₹${order.totalAmount} ready when your order arrives.`
+      : paid
+        ? `Payment received${order.utrNumber ? ` (UPI ref ${esc(order.utrNumber)})` : ""}. Thank you!`
+        : "We are verifying your UPI payment and will update you shortly.";
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head><meta charset="utf-8"><title>Order confirmed: ${esc(order.orderNumber)}</title></head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f7f5f0; margin: 0; padding: 24px; color: #202020;">
+        <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border: 1px solid #e7e2d8; border-radius: 12px; overflow: hidden;">
+          <div style="background: #1f3a2c; padding: 26px 24px; text-align: center;">
+            <div style="color: #02cb5a; font-size: 24px; font-weight: 800; letter-spacing: 3px; font-family: Georgia, serif;">TEABOX</div>
+          </div>
+          <div style="padding: 26px 24px;">
+            <h1 style="font-size: 21px; margin: 0 0 6px; color: #1f3a2c;">Thank you, ${esc(order.customerName.split(" ")[0])}! Your order is confirmed.</h1>
+            <p style="font-size: 14px; color: #5c5a52; margin: 0 0 18px;">Order <strong>#${esc(order.orderNumber)}</strong>. We'll email you again when it ships.</p>
+            <div style="background: ${paid || order.paymentMethod === "cod" ? "#eaf8ef" : "#fbf4e8"}; border-radius: 8px; padding: 12px 14px; font-size: 13.5px; color: #1f3a2c;">${paymentLine}</div>
+
+            <table style="width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 14px;">
+              ${order.items
+                .map(
+                  (item) => `
+                <tr>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #f0ede6;"><strong>${esc(item.title)}</strong>${item.weight ? `<br><span style="color: #747576; font-size: 12.5px;">${esc(item.weight)}</span>` : ""}</td>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #f0ede6; text-align: center; color: #5c5a52;">×${item.quantity}</td>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #f0ede6; text-align: right; font-weight: 700;">₹${item.price * item.quantity}</td>
+                </tr>`
+                )
+                .join("")}
+            </table>
+            <table style="width: 100%; font-size: 13.5px; margin-top: 10px; color: #5c5a52;">
+              ${order.subtotal ? `<tr><td>Subtotal</td><td style="text-align: right;">₹${order.subtotal}</td></tr>` : ""}
+              ${order.discountAmount ? `<tr><td>Discount</td><td style="text-align: right; color: #016c2f;">-₹${order.discountAmount}</td></tr>` : ""}
+              <tr><td>Shipping</td><td style="text-align: right;">${order.shippingFee ? `₹${order.shippingFee}` : "Free"}</td></tr>
+              ${order.codFee ? `<tr><td>COD fee</td><td style="text-align: right;">₹${order.codFee}</td></tr>` : ""}
+              <tr><td style="padding-top: 8px; font-size: 16px; font-weight: 800; color: #1f3a2c;">Total</td><td style="padding-top: 8px; text-align: right; font-size: 16px; font-weight: 800; color: #1f3a2c;">₹${order.totalAmount}</td></tr>
+            </table>
+
+            <div style="background: #fafafa; border: 1px solid #e7e2d8; border-radius: 8px; padding: 14px; margin-top: 18px; font-size: 13.5px; line-height: 1.6;">
+              <strong>Delivering to</strong><br>
+              ${esc(order.customerName)}<br>
+              ${esc(order.address)}${order.landmark ? `, near ${esc(order.landmark)}` : ""}<br>
+              ${esc(order.city)}, ${esc(order.state)} - ${esc(order.pincode)}
+            </div>
+
+            <div style="text-align: center; margin-top: 22px;">
+              <a href="${STORE_URL}/account" style="display: inline-block; background: #02cb5a; color: #1f3a2c; font-weight: 800; font-size: 14px; padding: 13px 26px; border-radius: 8px; text-decoration: none;">View my orders →</a>
+            </div>
+          </div>
+          <div style="background: #fafafa; border-top: 1px solid #e7e2d8; color: #747576; padding: 16px; text-align: center; font-size: 12px;">
+            Questions? Just reply to this email.
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
 }
 
 /**
@@ -276,7 +444,8 @@ export async function sendOrderConfirmationEmail(
       await dispatchEmail({
         to: order.customerEmail,
         subject: `Order Confirmed: #${order.orderNumber} - Teabox`,
-        html: adminHtml,
+        html: buildCustomerOrderConfirmationHtml(order),
+        text: `Thank you! Your Teabox order #${order.orderNumber} (₹${order.totalAmount}) is confirmed. View your orders: ${STORE_URL}/account`,
       });
     }
 
@@ -291,8 +460,6 @@ export async function sendOrderConfirmationEmail(
  * Generate Teabox Branded 6-Digit OTP Login Verification Email HTML
  */
 function buildOtpNotificationHtml(code: string, email: string): string {
-  const digits = code.split("");
-
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -311,8 +478,8 @@ function buildOtpNotificationHtml(code: string, email: string): string {
           .subtitle { font-size: 14px; color: #5c5a52; line-height: 1.6; margin: 0 0 24px; }
           .code-container { background: #f0fdf4; border: 2px dashed #02cb5a; border-radius: 14px; padding: 22px 16px; margin: 24px 0; }
           .code-label { font-size: 11px; font-weight: 700; color: #016c2f; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; }
-          .digits-grid { display: flex; justify-content: center; gap: 8px; margin: 0 auto; max-width: 340px; }
-          .digit-box { display: inline-block; width: 44px; height: 52px; line-height: 52px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 28px; font-weight: 800; color: #1f3a2c; background: #ffffff; border: 1.5px solid #a3c4b2; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); text-align: center; margin: 0 3px; }
+          .code { display: inline-block; padding: 10px 18px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #1f3a2c; background: #ffffff; border: 1.5px solid #a3c4b2; border-radius: 10px; -webkit-user-select: all; user-select: all; }
+          .copy-hint { font-size: 11.5px; color: #5c5a52; margin-top: 10px; }
           .expiry-note { font-size: 12.5px; color: #747576; line-height: 1.5; margin: 20px 0 0; }
           .security-alert { background: #fafafa; border-radius: 10px; padding: 14px; margin-top: 24px; font-size: 12px; color: #5c5a52; border: 1px solid #e7e2d8; text-align: left; }
           .footer { background: #fafafa; border-top: 1px solid #f0ede6; padding: 20px; text-align: center; font-size: 11.5px; color: #9c9a94; line-height: 1.5; }
@@ -333,9 +500,8 @@ function buildOtpNotificationHtml(code: string, email: string): string {
             </p>
             <div class="code-container">
               <div class="code-label">One-Time Verification Code</div>
-              <div class="digits-grid">
-                ${digits.map((d) => `<span class="digit-box">${d}</span>`).join("")}
-              </div>
+              <div class="code">${code}</div>
+              <div class="copy-hint">Tap and hold (or double-click) the code to copy it</div>
             </div>
             <p class="expiry-note">
               ⏱️ This code will expire in <strong>10 minutes</strong>.
@@ -368,6 +534,8 @@ export async function sendOtpVerificationEmail(
       to: email,
       subject: `${code} is your Teabox login verification code`,
       html,
+      // Plain-text part: what phone notifications show, and what Gmail / iOS read to offer "Copy code"
+      text: `Your Teabox verification code is ${code}\n\nIt expires in 10 minutes. Never share this code with anyone.`,
     });
     return {
       success: result.success,
