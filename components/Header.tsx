@@ -24,12 +24,21 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
     setMounted(true);
   }, []);
 
+  const closeMenus = () => {
+    setActiveMega(null);
+    setActiveDropdown(null);
+  };
+
+  // Close menus when route changes
+  useEffect(() => {
+    closeMenus();
+  }, [pathname]);
+
   // Close menus on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (navRef.current && !navRef.current.contains(event.target as Node)) {
-        setActiveMega(null);
-        setActiveDropdown(null);
+        closeMenus();
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -69,6 +78,7 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
     <>
       <header
         ref={navRef}
+        onMouseLeave={closeMenus}
         className="sticky top-0 z-40 w-full bg-white border-b border-[#e7e2d8] transition-shadow duration-200"
       >
         <div className="max-w-[1440px] mx-auto px-4 lg:px-8 xl:px-12 h-[68px] lg:h-[72px] flex items-center justify-between gap-4 relative">
@@ -86,7 +96,7 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
 
           {/* Mobile Centered Brand Logo: Clean text format */}
           <div className="lg:hidden absolute left-1/2 -translate-x-1/2 flex items-center">
-            <Link href="/" className="inline-block relative py-1">
+            <Link href="/" onClick={closeMenus} className="inline-block relative py-1">
               <span className="font-stencil text-[22px] sm:text-[24px] font-bold tracking-wider text-[#02cb5a] hover:opacity-90 transition-opacity">
                 DEMOBOX
               </span>
@@ -96,7 +106,12 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
           {/* Desktop Left Group: Brand Logo on Far Left + Navigation Items */}
           <div className="hidden lg:flex items-center gap-7 xl:gap-9">
             {/* Desktop Brand Logo: Clean text format */}
-            <Link href="/" className="inline-block relative py-1 shrink-0">
+            <Link
+              href="/"
+              onMouseEnter={closeMenus}
+              onClick={closeMenus}
+              className="inline-block relative py-1 shrink-0"
+            >
               <span className="font-stencil text-[24px] xl:text-[26px] font-bold tracking-wider text-[#02cb5a] hover:opacity-90 transition-opacity">
                 DEMOBOX
               </span>
@@ -114,6 +129,7 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               >
                 <Link
                   href="/collections/all"
+                  onClick={closeMenus}
                   className={`py-5 flex items-center gap-1.5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] transition-colors ${
                     activeMega === "shop" || pathname === "/collections/all" || (pathname?.startsWith("/collections") && pathname !== "/collections/trial-packs" && pathname !== "/collections/chai" && pathname !== "/collections/green-tea" && pathname !== "/collections/gifts")
                       ? "text-[#016c2f]"
@@ -134,6 +150,8 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               {/* Direct links */}
               <Link
                 href="/collections/trial-packs"
+                onMouseEnter={closeMenus}
+                onClick={closeMenus}
                 className={`py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] transition-colors whitespace-nowrap ${
                   pathname === "/collections/trial-packs"
                     ? "text-[#016c2f]"
@@ -144,6 +162,8 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               </Link>
               <Link
                 href="/collections/chai"
+                onMouseEnter={closeMenus}
+                onClick={closeMenus}
                 className={`py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] transition-colors whitespace-nowrap ${
                   pathname === "/collections/chai"
                     ? "text-[#016c2f]"
@@ -154,6 +174,8 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               </Link>
               <Link
                 href="/collections/green-tea"
+                onMouseEnter={closeMenus}
+                onClick={closeMenus}
                 className={`py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] transition-colors whitespace-nowrap ${
                   pathname === "/collections/green-tea"
                     ? "text-[#016c2f]"
@@ -164,6 +186,8 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               </Link>
               <Link
                 href="/collections/all"
+                onMouseEnter={closeMenus}
+                onClick={closeMenus}
                 className="py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] text-[#c87a1d] hover:opacity-85 transition-opacity whitespace-nowrap"
               >
                 Limited Edition
@@ -203,6 +227,7 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
                       <li>
                         <Link
                           href="/collections/gifts"
+                          onClick={closeMenus}
                           className="block px-5 py-2.5 hover:bg-[#fafafa] hover:text-[#016c2f] transition-colors"
                         >
                           All Gift Sets
@@ -211,6 +236,7 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
                       <li>
                         <Link
                           href="/collections/trial-packs"
+                          onClick={closeMenus}
                           className="block px-5 py-2.5 hover:bg-[#fafafa] hover:text-[#016c2f] transition-colors"
                         >
                           Festive Specials
@@ -219,6 +245,7 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
                       <li>
                         <Link
                           href="/collections/tea-accessories"
+                          onClick={closeMenus}
                           className="block px-5 py-2.5 hover:bg-[#fafafa] hover:text-[#016c2f] transition-colors"
                         >
                           Luxury Wooden Boxes &amp; Teaware
@@ -227,6 +254,7 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
                       <li>
                         <Link
                           href="/pages/corporate-gifting-2026"
+                          onClick={closeMenus}
                           className="block px-5 py-2.5 hover:bg-[#fafafa] hover:text-[#016c2f] transition-colors font-medium border-t border-[#e7e2d8]/60 mt-1"
                         >
                           Corporate Gifting
@@ -240,6 +268,8 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
               {/* Why Teabox */}
               <Link
                 href="/pages/why-teabox"
+                onMouseEnter={closeMenus}
+                onClick={closeMenus}
                 className={`py-5 text-[17px] xl:text-[18px] font-semibold tracking-[-0.2px] transition-colors whitespace-nowrap ${
                   pathname === "/pages/why-teabox"
                     ? "text-[#016c2f]"
@@ -252,7 +282,10 @@ export default function Header({ onOpenTeaFinder }: { onOpenTeaFinder?: () => vo
           </div>
 
           {/* Right Group: Action Icons & Search */}
-          <div className="flex items-center gap-2.5 sm:gap-4 ml-auto">
+          <div
+            onMouseEnter={closeMenus}
+            className="flex items-center gap-2.5 sm:gap-4 ml-auto"
+          >
             {/* Desktop Search Bar (Exact Live Teabox Style: 170x44px, 1.5px border, 8px radius, 16px text) */}
             <button
               type="button"
