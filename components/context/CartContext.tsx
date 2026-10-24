@@ -77,6 +77,40 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const mergeCartItems = useCartStore((s) => s.mergeCartItems);
   const freeShippingThreshold = useCartStore((s) => s.freeShippingThreshold);
 
+  // Prices saved in the cart can be stale (admin price change, a button showing the wrong size's
+  // price). Re-price every line from the live catalog so the cart shows what checkout charges.
+  const lineKey = cartItems.map((it) => `${it.id}|${it.weight || ""}|${it.price}`).join(",");
+  useEffect(() => {
+    if (!hasHydrated || cartItems.length === 0) return;
+    const lines = cartItems.map((it) => ({ id: it.id, weight: it.weight || null }));
+    const controller = new AbortController();
+    fetch("/api/cart/price", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: lines }),
+      signal: controller.signal,
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const prices: Array<number | null> | undefined = data?.prices;
+        if (!Array.isArray(prices)) return;
+        const live = new Map(lines.map((l, i) => [l.id, prices[i]]));
+        const current = useCartStore.getState().cartItems;
+        let changed = false;
+        const next = current.map((it) => {
+          const price = live.get(it.id);
+          if (typeof price !== "number" || price === it.price) return it;
+          changed = true;
+          return { ...it, price };
+        });
+        if (changed) useCartStore.getState().setCartItems(next);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+    // lineKey covers every field that affects the price
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasHydrated, lineKey]);
+
   // Computed total count and subtotal
   const totalCount = useMemo(
     () => cartItems.reduce((acc, item) => acc + item.quantity, 0),

@@ -13,14 +13,10 @@ import {
   ArrowRight,
   ChevronRight,
   Sparkles,
-  Copy,
-  ExternalLink,
-  Clock,
-  RefreshCw,
-  CheckCircle2,
 } from "lucide-react";
 import { useCart } from "./context/CartContext";
 import { cleanIndianPhone } from "@/lib/validations/checkout";
+import ManualUpiPanel from "./ManualUpiPanel";
 import TeaPayPanel, { cancelTeaPaySession, PaymentLeaveDialog, TeaPaySessionView } from "./TeaPayPanel";
 import { newOrderNumber } from "@/lib/orderNumber";
 import { useCodAvailable } from "@/lib/useCodAvailable";
@@ -71,17 +67,12 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   // UPI payment state
   const [upiSession, setUpiSession] = useState<UpiSessionData | null>(null);
   const [isCreatingUpi, setIsCreatingUpi] = useState(false);
-  const [upiUtr, setUpiUtr] = useState("");
   const [confirmedUtr, setConfirmedUtr] = useState("");
-  const [utrError, setUtrError] = useState("");
-  const [isVerifyingUtr, setIsVerifyingUtr] = useState(false);
-  // paymentConfirmed: the bank credit was matched (the order was created on the server). utrSubmitted: manual-UPI UTR, unverified.
+  // paymentConfirmed: the bank credit was matched (the order was created on the server).
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
-  const [utrSubmitted, setUtrSubmitted] = useState(false);
   const persistOrderRef = useRef<(utr: string | null) => Promise<string | null>>(async () => null);
   // Leaving while the UPI payment is open asks first (PaymentLeaveDialog).
   const [leaveAction, setLeaveAction] = useState<null | (() => void)>(null);
-  const [copiedVpa, setCopiedVpa] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState(600); // 10 minutes
 
   // Handle phone number input & autofill sanitization (+91 or leading 0 removal)
@@ -282,56 +273,14 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
     return () => clearInterval(timer);
   }, [isOpen, step, paymentMethod, countdownSeconds]);
 
-  // Copy VPA to clipboard
-  const handleCopyVpa = (vpaText: string) => {
-    navigator.clipboard.writeText(vpaText);
-    setCopiedVpa(true);
-    setTimeout(() => setCopiedVpa(false), 2000);
-  };
-
-  // Handle UTR submission
-  const handleVerifyUtr = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setUtrError("");
-    const clean = upiUtr.trim().replace(/\D/g, "");
-    if (clean.length < 12) {
-      setUtrError("Please enter a valid 12-digit UPI UTR / Ref Number from your payment app receipt.");
-      return;
-    }
-
-    setIsVerifyingUtr(true);
-    try {
-      const res = await fetch("/api/payments/youpi/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, utr: clean }),
-      });
-      const data = await res.json();
-      if (data?.success) {
-        setConfirmedUtr(clean);
-        setUtrSubmitted(true);
-        setIsVerifyingUtr(false);
-      } else {
-        setUtrError(data?.error || "Verification failed. Please check the 12-digit UTR.");
-        setIsVerifyingUtr(false);
-      }
-    } catch {
-      setIsVerifyingUtr(false);
-      setUtrError("Network connection error. Please try again.");
-    }
-  };
-
   const modalBodyRef = useRef<HTMLDivElement>(null);
 
   const resetCheckout = () => {
     setStep(1);
     setOrderId("");
     setUpiSession(null);
-    setUpiUtr("");
     setConfirmedUtr("");
-    setUtrError("");
     setPaymentConfirmed(false);
-    setUtrSubmitted(false);
     setIsProcessing(false);
     setPaymentMethod("upi");
     setConfirmedTotal(null);
@@ -455,15 +404,8 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
   };
 
   const handlePlaceOrder = async () => {
-    if (paymentMethod === "upi" && !paymentConfirmed && !utrSubmitted) {
-      const msg =
-        upiSession?.mode === "native"
-          ? "Please complete the UPI payment above. Your order is placed automatically once it is received."
-          : "Please pay using the QR / UPI app, then enter your 12-digit UTR to place the order.";
-      setUtrError(msg);
-      alert(msg);
-      return;
-    }
+    // Gateway UPI orders are created by the server when the money arrives; nothing to place by hand.
+    if (paymentMethod === "upi" && upiSession?.mode === "native" && !paymentConfirmed) return;
 
     const currentTotal = latestTotalRef.current > 0 ? latestTotalRef.current : finalTotal;
     setConfirmedTotal(currentTotal);
@@ -879,166 +821,20 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                   )}
 
                   {paymentMethod === "upi" && upiSession?.mode !== "native" && (
-                    <div className="mt-4 pt-4 border-t border-[#e7e2d8] space-y-4" onClick={(e) => e.stopPropagation()}>
-                      {/* UPI Info Sub-banner */}
-                      <div className="bg-[#f0f8f4] border border-[#bfdcc9] rounded-lg p-3 text-[12.5px] text-[#1f3a2c] flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-[#02cb5a] animate-ping" />
-                          <span>Pay seamlessly using any UPI app or scan the QR code.</span>
-                        </div>
-                        <span className="text-[11px] font-bold text-[#016c2f] bg-white px-2 py-0.5 rounded border border-[#bfdcc9]">
-                          Instant
-                        </span>
-                      </div>
-
-                      {/* Dynamic QR & Apps Box */}
-                      <div className="bg-white border border-[#e7e2d8] rounded-xl p-4 flex flex-col sm:flex-row items-center gap-5 justify-between shadow-2xs">
-                        {/* Dynamic QR Display */}
-                        <div className="flex flex-col items-center text-center">
-                          <div className="relative w-44 h-44 bg-white p-2 rounded-xl border border-[#e7e2d8] shadow-sm flex items-center justify-center">
-                            {isCreatingUpi ? (
-                              <div className="flex flex-col items-center gap-2 text-[12px] text-[#5c5a52]">
-                                <RefreshCw size={22} className="animate-spin text-[#016c2f]" />
-                                <span>Generating QR...</span>
-                              </div>
-                            ) : upiSession?.qrCodeDataUrl ? (
-                              <img
-                                src={upiSession.qrCodeDataUrl}
-                                alt="UPI QR Code"
-                                className="w-full h-full object-contain rounded"
-                              />
-                            ) : (
-                              <div className="text-[12px] text-[#747576]">QR Ready</div>
-                            )}
-                          </div>
-
-                          {/* Timer & Amount Pill */}
-                          <div className="flex items-center gap-2 mt-2 text-[12px] text-[#5c5a52]">
-                            <Clock size={13} className="text-[#e27a00]" />
-                            <span>
-                              Expires in:{" "}
-                              <strong className="text-[#202020]">
-                                {Math.floor(countdownSeconds / 60)}:
-                                {(countdownSeconds % 60).toString().padStart(2, "0")}
-                              </strong>
-                            </span>
-                          </div>
-                          <span className="text-[13px] font-bold text-[#016c2f] mt-0.5">
-                            ₹{finalTotal.toLocaleString("en-IN")}
-                          </span>
-                        </div>
-
-                        {/* Pay Via Direct UPI Apps & VPA Info */}
-                        <div className="flex-1 w-full space-y-3">
-                          <div>
-                            <span className="text-[12px] font-bold text-[#202020] uppercase tracking-wider block mb-1.5">
-                              Pay with UPI Apps
-                            </span>
-                            <div className="grid grid-cols-2 gap-2">
-                              {[
-                                {
-                                  name: "Google Pay",
-                                  scheme: upiSession?.deepLinks?.gpay || upiSession?.upiUri,
-                                  color: "#1a73e8",
-                                },
-                                {
-                                  name: "PhonePe",
-                                  scheme: upiSession?.deepLinks?.phonepe || upiSession?.upiUri,
-                                  color: "#5f259f",
-                                },
-                                {
-                                  name: "Paytm",
-                                  scheme: upiSession?.deepLinks?.paytm || upiSession?.upiUri,
-                                  color: "#00b9f5",
-                                },
-                                {
-                                  name: "CRED UPI",
-                                  scheme: upiSession?.deepLinks?.cred || upiSession?.upiUri,
-                                  color: "#000000",
-                                },
-                              ].map((app) => (
-                                <a
-                                  key={app.name}
-                                  href={app.scheme || "#"}
-                                  className="p-2.5 rounded-lg border border-[#e7e2d8] hover:border-[#02cb5a] hover:bg-[#fafafa] flex items-center justify-between text-[12.5px] font-semibold text-[#202020] transition-all cursor-pointer shadow-2xs"
-                                >
-                                  <span>{app.name}</span>
-                                  <ExternalLink size={13} className="text-[#747576]" />
-                                </a>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Merchant VPA with Copy Button */}
-                          <div className="bg-[#fafafa] border border-[#e7e2d8] rounded-lg p-2.5 flex items-center justify-between">
-                            <div className="min-w-0 pr-2">
-                              <span className="text-[11px] text-[#747576] block">Merchant UPI ID (VPA)</span>
-                              <span className="text-[13px] font-mono font-bold text-[#1f3a2c] truncate block">
-                                {upiSession?.vpa || ""}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleCopyVpa(upiSession?.vpa || "")}
-                              className="px-2.5 py-1 text-[11px] font-bold bg-white border border-[#e7e2d8] hover:border-[#1f3a2c] rounded flex items-center gap-1 transition-colors cursor-pointer shrink-0 text-[#202020]"
-                            >
-                              {copiedVpa ? (
-                                <>
-                                  <Check size={12} className="text-[#02cb5a]" />
-                                  <span>Copied!</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy size={12} />
-                                  <span>Copy</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* UTR Verification Form */}
-                      <form onSubmit={handleVerifyUtr} className="bg-[#fafafa] border border-[#e7e2d8] rounded-xl p-3.5 space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[12.5px] font-bold text-[#202020]">
-                            Done Paying? Enter 12-Digit UPI Ref / UTR Number:
-                          </label>
-                          <span className="text-[11px] text-[#747576]">Matched with our bank record</span>
-                        </div>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            maxLength={16}
-                            value={upiUtr}
-                            onChange={(e) => setUpiUtr(e.target.value)}
-                            placeholder="e.g. 428712345678"
-                            className="flex-1 px-3.5 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13.5px] font-mono bg-white outline-none"
-                          />
-                          <button
-                            type="submit"
-                            disabled={isVerifyingUtr || upiUtr.trim().length < 8}
-                            className="bg-[#02cb5a] hover:bg-[#02b851] disabled:opacity-50 text-[#1f3a2c] px-4 py-2 rounded-lg font-bold text-[13px] uppercase tracking-wider transition-colors cursor-pointer shrink-0 flex items-center gap-1.5 shadow-none"
-                          >
-                            {isVerifyingUtr ? (
-                              <RefreshCw size={14} className="animate-spin" />
-                            ) : (
-                              <CheckCircle2 size={15} />
-                            )}
-                            <span>Submit UTR</span>
-                          </button>
-                        </div>
-                        {utrError && <p className="text-[12px] text-[#e53935]">{utrError}</p>}
-                        {utrSubmitted && (
-                          <p className="text-[12px] text-[#016c2f] font-semibold">
-                            UTR received. Tap &ldquo;Confirm &amp; Place Order&rdquo; below. We dispatch once your payment is matched with our bank record.
-                          </p>
-                        )}
-                        <div className="flex items-center gap-1.5 text-[11px] text-[#747576]">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#02cb5a] animate-pulse" />
-                          <span>Waiting for your payment. This screen updates when it is received.</span>
-                        </div>
-                      </form>
+                    <div className="mt-4 pt-4 border-t border-[#e7e2d8]" onClick={(e) => e.stopPropagation()}>
+                      <ManualUpiPanel
+                        loading={isCreatingUpi || !upiSession}
+                        amount={upiSession?.amount ?? finalTotal}
+                        vpa={upiSession?.vpa || ""}
+                        payeeName={upiSession?.merchantName || "Teabox India"}
+                        qrCodeDataUrl={upiSession?.qrCodeDataUrl ?? undefined}
+                        deepLinks={upiSession?.deepLinks ?? undefined}
+                        upiUri={upiSession?.upiUri ?? undefined}
+                        secondsLeft={countdownSeconds}
+                        busy={isProcessing}
+                        onConfirm={handlePlaceOrder}
+                        onRestart={restartUpiSession}
+                      />
                     </div>
                   )}
                 </div>
@@ -1073,32 +869,29 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
                 )}
               </div>
 
-              {/* Final Amount & Pay Button */}
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={handlePlaceOrder}
-                  disabled={isProcessing}
-                  className="w-full bg-[#02cb5a] hover:bg-[#02b851] text-[#1f3a2c] py-4 px-5 rounded-xl font-bold text-[16px] uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-75"
-                >
-                  {isProcessing ? (
-                    <>
-                      <span className="w-5 h-5 border-2 border-[#1f3a2c] border-t-transparent rounded-full animate-spin" />
-                      <span>Securing Your Garden-Fresh Teas...</span>
-                    </>
-                  ) : paymentMethod === "upi" ? (
-                    <>
-                      <span>Confirm &amp; Place Order — ₹{finalTotal.toLocaleString("en-IN")}</span>
-                      <ArrowRight size={19} />
-                    </>
-                  ) : (
-                    <>
-                      <span>Pay &amp; Place Order — ₹{finalTotal.toLocaleString("en-IN")}</span>
-                      <ArrowRight size={19} />
-                    </>
-                  )}
-                </button>
-              </div>
+              {/* UPI orders are placed by the payment panel itself; only COD needs a button */}
+              {paymentMethod === "cod" && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={handlePlaceOrder}
+                    disabled={isProcessing}
+                    className="w-full bg-[#02cb5a] hover:bg-[#02b851] text-[#1f3a2c] py-4 px-5 rounded-xl font-bold text-[16px] uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-75"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <span className="w-5 h-5 border-2 border-[#1f3a2c] border-t-transparent rounded-full animate-spin" />
+                        <span>Securing Your Garden-Fresh Teas...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Place COD Order — ₹{finalTotal.toLocaleString("en-IN")}</span>
+                        <ArrowRight size={19} />
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
