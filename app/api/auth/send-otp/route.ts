@@ -34,16 +34,45 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Dispatch branded email via SMTP (Nodemailer) or Resend API (with dev console fallback)
-    await sendOtpVerificationEmail(email, otpResult.code);
+    // Dispatch branded email via Nodemailer (Gmail SMTP) or Resend API (with local dev fallback)
+    const emailResult = await sendOtpVerificationEmail(email, otpResult.code);
 
-    // Secure server log (Never transmitted to client)
-    console.log(`[Teabox Auth] OTP generated & dispatched for: ${email}`);
+    if (!emailResult.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: emailResult.error || "Failed to dispatch email. Please verify your Gmail configuration.",
+        },
+        { status: 502 }
+      );
+    }
 
-    // Return success without revealing the code to the client
+    // Secure server log
+    console.log(
+      `[Teabox Auth] 6-digit OTP generated & dispatched for ${email} (mock: ${!!emailResult.isDevMock})`
+    );
+
+    // No email provider configured: show the code on screen in development only. In production
+    // that would let anyone sign in as any email, so refuse instead.
+    if (emailResult.isDevMock) {
+      if (process.env.NODE_ENV === "production") {
+        return NextResponse.json(
+          { success: false, error: "Email sign-in is not available right now. Please try again later." },
+          { status: 503 }
+        );
+      }
+      return NextResponse.json({
+        success: true,
+        message: `A 6-digit verification code was sent to ${email}`,
+        cooldownSeconds: 30,
+        devCode: otpResult.code,
+        isDevMock: true,
+      });
+    }
+
     return NextResponse.json({
       success: true,
-      message: `Verification code sent to ${email}`,
+      message: `A 6-digit verification code was sent to ${email}`,
       cooldownSeconds: 30,
     });
   } catch (err) {

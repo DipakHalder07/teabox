@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isKnownManualPayment, submitCustomerUtr } from "@/lib/manualUpi";
 import { utrVerificationSchema } from "@/lib/validations/checkout";
 
-// Manual UPI fallback. Payments here are confirmed by the admin, so this never reports COMPLETED.
+// Checks payment status across local gateway records
 export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams;
   const orderId = searchParams.get("orderId");

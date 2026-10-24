@@ -1,6 +1,9 @@
-import { PRODUCTS } from "@/data/products";
+import type { Product } from "@/data/products";
+import { getStoreProducts } from "@/lib/catalog";
+import { findVariant } from "@/lib/productVariants";
 
-// Server-side prices. The browser's prices and totals are never trusted.
+// Server-side prices. The browser's prices and totals are never trusted: every line is priced
+// from the live catalog (Admin → Products) at the price of the size the customer picked.
 
 export interface OrderLineInput {
   productId?: string | null;
@@ -20,24 +23,52 @@ export interface PricedOrder {
   totalAmount: number;
 }
 
-export function priceOrder(input: {
+/** A cart line that can't be sold (removed, hidden, sold out or not enough stock). */
+export class PricingError extends Error {
+  status = 400;
+}
+
+/** Cart ids are "<product id>-<size>", so match the longest product id they start with. */
+function findProduct(catalog: Product[], cartId: string | null | undefined) {
+  if (!cartId) return null;
+  return (
+    catalog.find((p) => p.id === cartId || p.handle === cartId) ||
+    catalog
+      .filter((p) => cartId.startsWith(`${p.id}-`))
+      .sort((a, b) => b.id.length - a.id.length)[0] ||
+    null
+  );
+}
+
+export async function priceOrder(input: {
   items: OrderLineInput[];
   couponCode?: string | null;
   paymentMethod: "upi" | "cod";
-}): PricedOrder {
+}): Promise<PricedOrder> {
+  const catalog = await getStoreProducts();
+
   const items = input.items.map((item) => {
-    const found = PRODUCTS.find(
-      (p) =>
-        p.id === item.productId ||
-        p.handle === item.productId ||
-        (item.productId && item.productId.startsWith(p.id))
-    );
+    const product = findProduct(catalog, item.productId);
+    if (!product) {
+      throw new PricingError(`"${item.title}" is no longer available. Please remove it from your cart.`);
+    }
+    const quantity = Math.max(1, Math.floor(item.quantity));
+    if (!product.inStock) {
+      throw new PricingError(`"${product.title}" is sold out. Please remove it from your cart.`);
+    }
+    if (product.trackInventory && (product.stockQuantity ?? 0) < quantity) {
+      throw new PricingError(`Only ${product.stockQuantity ?? 0} left of "${product.title}". Please lower the quantity.`);
+    }
+    const variant = findVariant(product, item.weight);
     return {
       ...item,
-      // Catalog id (cart ids may carry a size suffix), so it links to the products table.
-      productId: found ? found.id : null,
-      price: found ? found.price : Math.max(1, Math.round(item.price)),
-      quantity: Math.max(1, Math.floor(item.quantity)),
+      // Catalog id (cart ids carry a size suffix), so it links to the products table.
+      productId: product.id,
+      title: product.title,
+      weight: variant.name,
+      price: variant.price,
+      quantity,
+      image: item.image || product.image,
     };
   });
 

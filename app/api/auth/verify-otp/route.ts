@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: parseResult.error.issues[0]?.message || "Please enter a valid 4-digit code.",
+          error: parseResult.error.issues[0]?.message || "Please enter a valid 6-digit code.",
         },
         { status: 400 }
       );
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
 
     // Set secure session cookie
     response.cookies.set("teabox_customer_session", token, {
-      httpOnly: false, // Accessible to client for instant UI sync
+      httpOnly: true, // never readable by page scripts; the UI uses localStorage for display only
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 30 * 24 * 60 * 60, // 30 days

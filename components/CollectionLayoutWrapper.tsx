@@ -9,8 +9,9 @@ import CartDrawer from "@/components/CartDrawer";
 import SearchDrawer from "@/components/SearchDrawer";
 import TeaFinderModal from "@/components/TeaFinderModal";
 import ProductListingPage from "@/components/ProductListingPage";
+import type { Product } from "@/data/products";
 
-export default function CollectionLayoutWrapper({ collection }: { collection: string }) {
+export default function CollectionLayoutWrapper({ collection, products }: { collection: string; products: Product[] }) {
   const [teaFinderOpen, setTeaFinderOpen] = useState(false);
 
   return (
@@ -22,7 +23,7 @@ export default function CollectionLayoutWrapper({ collection }: { collection: st
 
       {/* 2. Main Product Listing Content */}
       <main className="flex-1">
-        <ProductListingPage initialCollectionId={collection} />
+        <ProductListingPage initialCollectionId={collection} products={products} />
       </main>
 
       {/* 3. Luxury Dark Footer */}

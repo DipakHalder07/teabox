@@ -15,11 +15,13 @@ import {
   Database,
   RefreshCw,
   ExternalLink,
+  Users,
 } from "lucide-react";
 import { StoredOrderData } from "@/lib/ordersDb";
 
 export default function AdminOverviewPage() {
   const [orders, setOrders] = useState<StoredOrderData[]>([]);
+  const [customerStats, setCustomerStats] = useState<{ totalCustomers: number; totalSubscribers: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [dbStatus, setDbStatus] = useState<{
     connected: boolean;
@@ -32,15 +34,23 @@ export default function AdminOverviewPage() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const [ordersRes, healthRes] = await Promise.allSettled([
+      const [ordersRes, healthRes, customersRes] = await Promise.allSettled([
         fetch("/api/admin/orders"),
         fetch("/api/admin/status"),
+        fetch("/api/admin/customers"),
       ]);
 
       if (ordersRes.status === "fulfilled") {
         const data = await ordersRes.value.json();
         if (data?.orders) {
           setOrders(data.orders);
+        }
+      }
+
+      if (customersRes.status === "fulfilled") {
+        const data = await customersRes.value.json();
+        if (data?.stats) {
+          setCustomerStats(data.stats);
         }
       }
 
@@ -170,8 +180,8 @@ export default function AdminOverviewPage() {
         </div>
       </div>
 
-      {/* 4 Key Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+      {/* 5 Key Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-5">
         {/* Total Revenue */}
         <div className="bg-white border border-[#e7e2d8] rounded-2xl p-5 shadow-2xs">
           <div className="flex items-center justify-between text-[#747576] mb-3">
@@ -201,6 +211,25 @@ export default function AdminOverviewPage() {
             {processingOrders.length} pending dispatch
           </span>
         </div>
+
+        {/* Customers & Subscribers */}
+        <Link
+          href="/admin/customers"
+          className="bg-white border border-[#e7e2d8] hover:border-[#1f3a2c] rounded-2xl p-5 shadow-2xs transition-all group block"
+        >
+          <div className="flex items-center justify-between text-[#747576] mb-3">
+            <span className="text-[13px] font-semibold group-hover:text-[#1f3a2c]">Customers</span>
+            <div className="w-9 h-9 rounded-xl bg-[#1f3a2c]/10 text-[#1f3a2c] group-hover:bg-[#1f3a2c] group-hover:text-white transition-colors flex items-center justify-center">
+              <Users size={19} />
+            </div>
+          </div>
+          <div className="text-[26px] font-bold text-[#1f3a2c]">
+            {customerStats ? customerStats.totalCustomers : "—"}
+          </div>
+          <span className="text-[12px] text-[#016c2f] font-semibold mt-1 block">
+            {customerStats ? `${customerStats.totalSubscribers} subscribers` : "Manage Customers →"}
+          </span>
+        </Link>
 
         {/* UPI Payments */}
         <div className="bg-white border border-[#e7e2d8] rounded-2xl p-5 shadow-2xs">

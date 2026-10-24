@@ -19,16 +19,20 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { Product, PRODUCTS } from "@/data/products";
+import { Product } from "@/data/products";
+import { findVariant, productVariants } from "@/lib/productVariants";
 import { useCart } from "./context/CartContext";
 import ProductCard from "./ProductCard";
 import ProductReviews from "./ProductReviews";
 
-export default function ProductDetailPage({ product }: { product: Product }) {
+export default function ProductDetailPage({ product, related = [] }: { product: Product; related?: Product[] }) {
   const { addToCart } = useCart();
 
   // Variant selector
-  const [selectedWeight, setSelectedWeight] = useState(product.weight || "100G");
+  const [selectedWeight, setSelectedWeight] = useState(() => {
+    const names = productVariants(product).map((v) => v.name);
+    return product.weight && names.includes(product.weight) ? product.weight : names[0];
+  });
   const [quantity, setQuantity] = useState(1);
 
   // Gallery images with full array support (all 9 authentic live images)
@@ -168,56 +172,11 @@ export default function ProductDetailPage({ product }: { product: Product }) {
   const isKesar = product.id === "kesar-rose-chai" || product.handle === "kesar-rose-chai";
 
   // Price calculation based on selected weight matching live site
-  const getCalculatedPrice = (weight: string) => {
-    if (product.id === "organic-green" || product.handle === "organic-green") {
-      if (weight === "100G") return 232;
-      if (weight === "200G") return 454;
-      if (weight === "300G") return 667;
-    }
-    if (isKesar) {
-      if (weight === "250G") return 458;
-      if (weight === "500G") return 916;
-      if (weight === "750G") return 1373;
-      if (weight === "1 KG" || weight === "1KG") return 1831;
-    }
-    if (isOjas) {
-      if (weight === "100G") return 349;
-      if (weight === "150G") return 499;
-      if (weight === "250G") return 799;
-    }
-    if (weight === "100G") return Math.round(product.price * 0.55);
-    if (weight === "150G") return product.price;
-    if (weight === "200G") return Math.round(product.price * 1.0);
-    if (weight === "250G") return product.price;
-    if (weight === "300G") return Math.round(product.price * 1.45);
-    if (weight === "500G") return Math.round(product.price * 1.85);
-    if (weight === "750G") return Math.round(product.price * 2.7);
-    if (weight === "1KG" || weight === "1 KG") return Math.round(product.price * 3.4);
-    if (weight === "50 Teabags") return Math.round(product.price * 1.8);
-    if (weight === "2 Boxes") return Math.round(product.price * 1.9);
-    return product.price;
-  };
-
+  // Each size has its own price (Admin → Products → Variants); the checkout uses the same prices
+  const getCalculatedPrice = (weight: string) => findVariant(product, weight).price;
   const getCalculatedOriginalPrice = (weight: string) => {
-    if (product.id === "organic-green" || product.handle === "organic-green") {
-      if (weight === "100G") return 290;
-      if (weight === "200G") return 464;
-      if (weight === "300G") return 696;
-    }
-    if (isKesar) {
-      if (weight === "250G") return 654;
-      if (weight === "500G") return 1308;
-      if (weight === "750G") return 1962;
-      if (weight === "1 KG" || weight === "1KG") return 2616;
-    }
-    if (isOjas) {
-      if (weight === "100G") return 420;
-      if (weight === "150G") return 599;
-      if (weight === "250G") return 960;
-    }
-    const curP = getCalculatedPrice(weight);
-    const ratio = product.originalPrice > product.price ? product.originalPrice / product.price : 1.25;
-    return Math.round(curP * ratio);
+    const v = findVariant(product, weight);
+    return v.compareAtPrice && v.compareAtPrice > v.price ? v.compareAtPrice : v.price;
   };
 
   const currentPrice = getCalculatedPrice(selectedWeight);
@@ -311,16 +270,13 @@ export default function ProductDetailPage({ product }: { product: Product }) {
   };
 
   // Related products (guaranteed unique by id)
-  const relatedProducts = Array.from(
-    new Map(
-      PRODUCTS.filter(
-        (p) => p.category === product.category && p.id !== product.id
-      ).map((p) => [p.id, p])
-    ).values()
-  ).slice(0, 4);
+  const relatedProducts = related.slice(0, 4);
 
   // Dynamic Description
-  const productDescription = isOjas
+  // A description written in Admin → Products wins over the built-in copy
+  const productDescription = product.description && product.description !== product.subtitle
+    ? product.description
+    : isOjas
     ? "A revitalizing Ayurvedic blend of premium Assam CTC black tea, refreshing peppermint, spearmint, lemongrass, and balancing Himalayan spices. Brewed to invigorate your senses and boost daily vitality."
     : isKesar
     ? "A luxurious blend of Assam CTC tea, saffron, rose petals, and cardamom, inspired by the royal flavors of Kashmir. Fragrant, floral, and gently spiced, it’s chai at its most elegant."

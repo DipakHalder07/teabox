@@ -103,11 +103,34 @@ model Product {
   estate         String?
   season         String?
   caffeine       String?
+  // Shopify-style fields (Admin → Products)
+  status         String      @default("active") // active | draft | archived; only active shows in the shop
+  sku            String?
+  vendor         String?
+  tags           String[]    @default([])
+  format         String?
+  variants       Json? // [{ name: "100G", price, compareAtPrice?, sku? }]; each size has its own price
+  trackInventory Boolean     @default(false) // true: stockQuantity goes down with each order, sold out at 0
+  sortOrder      Int         @default(0)
   orderItems     OrderItem[]
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
+  @@index([status, sortOrder])
   @@map("products")
+}
+
+// Product photos uploaded from the admin (camera or gallery), served at /api/media/<id>
+model MediaFile {
+  id        String   @id @default(cuid())
+  mimeType  String
+  data      Bytes
+  size      Int
+  width     Int?
+  height    Int?
+  createdAt DateTime @default(now())
+
+  @@map("media_files")
 }
 
 // ----------------------------------------------------

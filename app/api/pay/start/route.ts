@@ -3,12 +3,18 @@ import { isDatabaseConnected } from "@/lib/prisma";
 import { paymentStartSchema, cleanIndianPhone } from "@/lib/validations/checkout";
 import { startPayment } from "@/lib/gateway/payments";
 import { errorResponse, publicBaseUrl, sessionView, verifiedPhoneFromCookie } from "@/lib/gateway/http";
-import { alertNewCheckout } from "@/lib/gateway/alerts";
+import { alertNewCheckout, emailNewCheckout } from "@/lib/gateway/alerts";
 import { prisma } from "@/lib/prisma";
+import { getCustomerFromRequest } from "@/lib/customerAuth";
+import { limitByIp } from "@/lib/rateLimit";
 
 // Starts a UPI checkout with the shop's own gateway. Without a database the checkout falls
 // back to manual UPI (customer types the UTR, admin confirms).
 export async function POST(req: NextRequest) {
+  // Each checkout reserves a payable amount for a while, so scripts must not be able to flood it
+  const limited = limitByIp(req, "pay-start", 15, 10 * 60 * 1000);
+  if (limited) return limited;
+
   try {
     if (!(await isDatabaseConnected())) {
       return NextResponse.json({ error: "UPI gateway needs the database", fallback: "manual" }, { status: 503 });
@@ -19,6 +25,12 @@ export async function POST(req: NextRequest) {
     const parsed = paymentStartSchema.safeParse(raw);
     if (!parsed.success || !/^[6-9]\d{9}$/.test(parsed.data.customerPhone)) {
       return NextResponse.json({ error: "Please check your delivery details." }, { status: 400 });
+    }
+
+    // Signed-in customer left the email blank: use their account email, so the order shows in
+    // their profile and they get the confirmation email.
+    if (!parsed.data.customerEmail) {
+      parsed.data.customerEmail = (await getCustomerFromRequest(req))?.email || null;
     }
 
     let session = await startPayment(parsed.data);
@@ -35,6 +47,13 @@ export async function POST(req: NextRequest) {
     // Send real-time WhatsApp alert to shop owner immediately when customer starts checkout
     alertNewCheckout(session.id, publicBaseUrl(req)).catch((e) =>
       console.warn("[TeaPay] WhatsApp order alert failed:", e?.message || e)
+    );
+    // Email to the shop owner too: start time and when the 10-minute payment window ends
+    const baseUrl = publicBaseUrl(req);
+    after(() =>
+      emailNewCheckout(session.id, baseUrl).catch((e) =>
+        console.warn("[TeaPay] Checkout email alert failed:", e?.message || e)
+      )
     );
     return NextResponse.json(view);
   } catch (error) {

@@ -11,7 +11,7 @@ import TeaFinderModal from "@/components/TeaFinderModal";
 import ProductDetailPage from "@/components/ProductDetailPage";
 import { Product } from "@/data/products";
 
-export default function ProductDetailLayoutWrapper({ product }: { product: Product }) {
+export default function ProductDetailLayoutWrapper({ product, related }: { product: Product; related?: Product[] }) {
   const [teaFinderOpen, setTeaFinderOpen] = useState(false);
 
   return (
@@ -23,7 +23,7 @@ export default function ProductDetailLayoutWrapper({ product }: { product: Produ
 
       {/* 2. Main Product Content */}
       <main className="flex-1">
-        <ProductDetailPage product={product} />
+        <ProductDetailPage product={product} related={related} />
       </main>
 
       {/* 3. Luxury Dark Footer */}

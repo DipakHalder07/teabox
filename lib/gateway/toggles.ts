@@ -6,11 +6,22 @@ import { setSetting } from "./settings";
 //  sms:      the paired Android phone confirms payments from bank SMS / payment-app notifications
 //  gmail:    bank alert emails confirm payments
 //  cod:      customers can choose Cash on Delivery at checkout
+//  emailCheckout:      email the shop owner when a customer reaches the payment QR
+//  emailOrderAdmin:    email the shop owner each new order
+//  emailOrderCustomer: email the customer their order confirmation (when they gave an email)
 
-export type ToggleKey = "whatsapp" | "sms" | "gmail" | "cod";
+export type ToggleKey = "whatsapp" | "sms" | "gmail" | "cod" | "emailCheckout" | "emailOrderAdmin" | "emailOrderCustomer";
 export type Toggles = Record<ToggleKey, boolean>;
 
-const DEFAULTS: Toggles = { whatsapp: false, sms: true, gmail: true, cod: true };
+const DEFAULTS: Toggles = {
+  whatsapp: false,
+  sms: true,
+  gmail: true,
+  cod: true,
+  emailCheckout: true,
+  emailOrderAdmin: true,
+  emailOrderCustomer: true,
+};
 const KEYS = Object.keys(DEFAULTS) as ToggleKey[];
 
 let cache: { at: number; value: Toggles } | null = null;

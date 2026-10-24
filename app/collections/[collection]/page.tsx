@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import CollectionLayoutWrapper from "@/components/CollectionLayoutWrapper";
 import { COLLECTIONS } from "@/data/products";
+import { getStoreProducts } from "@/lib/catalog";
 
 interface PageProps {
   params: Promise<{ collection: string }>;
@@ -26,8 +27,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 async function CollectionContent({ params }: PageProps) {
-  const { collection } = await params;
-  return <CollectionLayoutWrapper collection={collection} />;
+  const [{ collection }, products] = await Promise.all([params, getStoreProducts()]);
+  return <CollectionLayoutWrapper collection={collection} products={products} />;
 }
 
 export default function CollectionPage(props: PageProps) {

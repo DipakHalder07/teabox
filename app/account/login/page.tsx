@@ -3,7 +3,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Check, ArrowRight, Mail, Lock, KeyRound, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, ArrowRight, Mail, Lock, KeyRound, Loader2, ClipboardPaste } from "lucide-react";
 import { toast } from "sonner";
 import SiteLayoutWrapper from "@/components/SiteLayoutWrapper";
 import {
@@ -15,6 +16,7 @@ import { useCart } from "@/components/context/CartContext";
 
 export default function LoginPage() {
   const { mergeCartItems, clearCart, cartItems } = useCart();
+  const router = useRouter();
 
   // Mode: "quick" (Instant Email Verification Code), "password" (traditional), "register", "forgot"
   const [viewMode, setViewMode] = useState<"quick" | "password" | "register" | "forgot">("quick");
@@ -22,7 +24,8 @@ export default function LoginPage() {
   // Email Quick OTP state
   const [email, setEmail] = useState("");
   const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState(["", "", "", ""]);
+  const [otpCode, setOtpCode] = useState(["", "", "", "", "", ""]);
+  const [devCode, setDevCode] = useState<string | null>(null);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -30,7 +33,7 @@ export default function LoginPage() {
   const [loggedInUser, setLoggedInUser] = useState("");
   const [inlineError, setInlineError] = useState<string | null>(null);
 
-  // Refs for 4-digit OTP auto-focus
+  // Refs for 6-digit OTP auto-focus
   const otpInputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
   // Password & Register state
@@ -47,10 +50,12 @@ export default function LoginPage() {
         if (parsed?.email) {
           setIsLoggedIn(true);
           setLoggedInUser(parsed.email);
+          // Already signed in: go to My Orders (it sends signed-out visitors back here)
+          router.replace("/account");
         }
       }
     } catch {}
-  }, []);
+  }, [router]);
 
   // Cooldown countdown timer for Resend Code
   useEffect(() => {
@@ -80,7 +85,7 @@ export default function LoginPage() {
     }
   };
 
-  // Step 1: Send 4-Digit Verification Code to Email (Server-Side Dispatch)
+  // Step 1: Send 6-Digit Verification Code to Email (Server-Side Dispatch via Nodemailer / Gmail)
   const handleSendEmailOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setInlineError(null);
@@ -111,10 +116,11 @@ export default function LoginPage() {
       }
 
       setOtpSent(true);
-      setOtpCode(["", "", "", ""]);
+      setOtpCode(["", "", "", "", "", ""]);
+      setDevCode(data.devCode || null);
       setResendCooldown(30); // 30-second resend cooldown
       toast.success("Verification Code Sent", {
-        description: `We've sent a 4-digit code to ${cleanEmail}. Please check your inbox.`,
+        description: `We've sent a 6-digit code to ${cleanEmail}. Please check your inbox.`,
       });
 
       // Focus first input box shortly after render
@@ -134,8 +140,8 @@ export default function LoginPage() {
     setInlineError(null);
     const entered = (codeOverride || otpCode.join("")).trim();
 
-    if (entered.length < 4) {
-      setInlineError("Please enter the complete 4-digit verification code.");
+    if (entered.length < 6) {
+      setInlineError("Please enter the complete 6-digit verification code.");
       return;
     }
 
@@ -150,7 +156,7 @@ export default function LoginPage() {
 
       if (!res.ok || !data.success) {
         setInlineError(data.error || "Incorrect verification code. Please check your inbox.");
-        setOtpCode(["", "", "", ""]);
+        setOtpCode(["", "", "", "", "", ""]);
         setTimeout(() => {
           otpInputsRef.current[0]?.focus();
         }, 100);
@@ -173,10 +179,36 @@ export default function LoginPage() {
       toast.success("Welcome to Teabox!", {
         description: `Signed in as ${authenticatedEmail}`,
       });
+      router.push("/account");
     } catch {
       setInlineError("Verification service error. Please try again.");
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  // A whole code arrived at once (paste, keyboard suggestion, iOS autofill from Mail): fill every box
+  const fillOtpCode = (raw: string) => {
+    const digits = raw.replace(/\D/g, "").slice(0, 6);
+    if (!digits) return false;
+    const newOtp = ["", "", "", "", "", ""];
+    for (let i = 0; i < digits.length; i++) newOtp[i] = digits[i];
+    setOtpCode(newOtp);
+    if (digits.length === 6) {
+      handleVerifyEmailOtp(undefined, digits);
+    } else {
+      otpInputsRef.current[Math.min(digits.length, 5)]?.focus();
+    }
+    return true;
+  };
+
+  const handlePasteButton = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!fillOtpCode(text)) toast.error("No code found. Copy the 6-digit code from the email first.");
+    } catch {
+      toast.error("Couldn't read the clipboard", { description: "Long-press the first box and choose Paste." });
+      otpInputsRef.current[0]?.focus();
     }
   };
 
@@ -202,10 +234,11 @@ export default function LoginPage() {
         return;
       }
 
-      setOtpCode(["", "", "", ""]);
+      setOtpCode(["", "", "", "", "", ""]);
+      if (data.devCode) setDevCode(data.devCode);
       setResendCooldown(30);
       toast.success("New Code Dispatched", {
-        description: `A fresh 4-digit code was sent to ${email}`,
+        description: `A fresh 6-digit code was sent to ${email}`,
       });
       setTimeout(() => {
         otpInputsRef.current[0]?.focus();
@@ -271,13 +304,14 @@ export default function LoginPage() {
     }
     try {
       localStorage.removeItem("teabox_customer_user");
-      document.cookie = "teabox_customer_session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
     } catch {}
+    fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     setIsLoggedIn(false);
     setLoggedInUser("");
     setOtpSent(false);
     setEmail("");
-    setOtpCode(["", "", "", ""]);
+    setOtpCode(["", "", "", "", "", ""]);
+    setDevCode(null);
     setViewMode("quick");
     clearCart();
     toast.info("Logged Out", {
@@ -324,8 +358,8 @@ export default function LoginPage() {
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-[#5c5a52]">Order History</span>
-                <Link href="/track" className="font-bold text-[#1f3a2c] underline">
-                  Track Past Orders →
+                <Link href="/account" className="font-bold text-[#1f3a2c] underline">
+                  My Orders →
                 </Link>
               </div>
             </div>
@@ -419,31 +453,20 @@ export default function LoginPage() {
 
                     <p className="text-[11.5px] text-[#747576] leading-tight pt-1">
                       By proceeding, you agree to Teabox&apos;s{" "}
-                      <Link href="#terms" className="underline font-medium text-[#202020]">
+                      <Link href="/terms" className="underline font-medium text-[#202020]">
                         Terms
                       </Link>{" "}
                       and{" "}
-                      <Link href="#privacy" className="underline font-medium text-[#202020]">
+                      <Link href="/privacy" className="underline font-medium text-[#202020]">
                         Privacy Policy
                       </Link>.
                     </p>
 
-                    <div className="pt-3 border-t border-[#e7e2d8] mt-4 flex items-center justify-between text-[13px]">
-                      <button
-                        type="button"
-                        onClick={() => setViewMode("password")}
-                        className="text-[#5c5a52] hover:text-[#202020] hover:underline font-medium cursor-pointer"
-                      >
-                        Use Password
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setViewMode("register")}
-                        className="text-[#016c2f] hover:underline font-bold cursor-pointer"
-                      >
-                        Create Password Account
-                      </button>
-                    </div>
+                    {/* Email code is the only sign-in: the old password and register screens only
+                        pretended to log in (nothing was checked on the server), so they are not offered */}
+                    <p className="pt-3 border-t border-[#e7e2d8] mt-4 text-[12.5px] text-[#5c5a52]">
+                      No password needed. New here? Your account is created when you enter the code.
+                    </p>
                   </form>
                 ) : (
                   /* STEP 2: Enter Verification Code */
@@ -456,16 +479,44 @@ export default function LoginPage() {
                         Enter Verification Code
                       </h3>
                       <p className="text-[13px] text-[#5c5a52] mt-0.5">
-                        We sent a 4-digit code to <strong className="text-[#1f3a2c]">{email}</strong>
+                        We sent a 6-digit code to <strong className="text-[#1f3a2c]">{email}</strong>
                       </p>
                       <p className="text-[11.5px] text-[#747576] mt-1">
                         Please check your email inbox (and spam folder)
                       </p>
                     </div>
 
-                    {/* 4-Digit Code Inputs */}
-                    <div className="flex justify-center gap-3 my-5">
-                      {[0, 1, 2, 3].map((index) => (
+                    {/* Developer Mock Helper (visible in dev mode when credentials aren't configured yet) */}
+                    {devCode && (
+                      <div className="bg-[#f0fdf4] border border-[#86efac] rounded-xl p-3 text-left text-[12.5px] text-[#166534] flex items-center justify-between shadow-2xs">
+                        <div>
+                          <div className="font-bold flex items-center gap-1.5">
+                            <span>🧪 Development Code:</span>
+                            <span className="font-mono text-[16px] font-extrabold tracking-widest text-[#059669]">
+                              {devCode}
+                            </span>
+                          </div>
+                          <span className="block text-[11px] text-[#15803d] mt-0.5">
+                            No email was sent: Gmail isn&apos;t set up yet, or restart the dev server after editing .env
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const digits = devCode.split("").slice(0, 6);
+                            setOtpCode(digits);
+                            handleVerifyEmailOtp(undefined, devCode);
+                          }}
+                          className="shrink-0 text-[11.5px] font-bold bg-[#166534] text-white px-2.5 py-1.5 rounded-lg hover:bg-[#14532d] transition-colors cursor-pointer"
+                        >
+                          Auto Fill
+                        </button>
+                      </div>
+                    )}
+
+                    {/* 6-Digit Code Inputs */}
+                    <div className="flex justify-center gap-2 sm:gap-2.5 my-5">
+                      {[0, 1, 2, 3, 4, 5].map((index) => (
                         <input
                           key={index}
                           ref={(el) => {
@@ -473,23 +524,29 @@ export default function LoginPage() {
                           }}
                           type="text"
                           inputMode="numeric"
-                          maxLength={1}
+                          // Lets iPhone/Mac offer the code from Mail above the keyboard
+                          autoComplete={index === 0 ? "one-time-code" : "off"}
+                          aria-label={`Digit ${index + 1}`}
                           required
                           disabled={isVerifying}
                           value={otpCode[index]}
                           onChange={(e) => {
                             const val = e.target.value.replace(/\D/g, "");
+                            if (val.length >= 6) {
+                              fillOtpCode(val);
+                              return;
+                            }
                             const newOtp = [...otpCode];
                             newOtp[index] = val ? val.slice(-1) : "";
                             setOtpCode(newOtp);
 
                             // Auto-focus next box
-                            if (val && index < 3) {
+                            if (val && index < 5) {
                               otpInputsRef.current[index + 1]?.focus();
                             }
 
-                            // If 4th digit entered, auto submit
-                            if (val && index === 3 && newOtp.slice(0, 3).every((d) => d !== "")) {
+                            // If 6th digit entered and all slots filled, auto submit
+                            if (val && index === 5 && newOtp.slice(0, 5).every((d) => d !== "")) {
                               handleVerifyEmailOtp(undefined, newOtp.join(""));
                             }
                           }}
@@ -501,25 +558,21 @@ export default function LoginPage() {
                           }}
                           onPaste={(e) => {
                             e.preventDefault();
-                            const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
-                            if (pasted.length > 0) {
-                              const newOtp = [...otpCode];
-                              for (let i = 0; i < pasted.length; i++) {
-                                newOtp[i] = pasted[i];
-                              }
-                              setOtpCode(newOtp);
-                              if (pasted.length === 4) {
-                                handleVerifyEmailOtp(undefined, pasted);
-                              } else {
-                                const focusIndex = Math.min(pasted.length, 3);
-                                otpInputsRef.current[focusIndex]?.focus();
-                              }
-                            }
+                            fillOtpCode(e.clipboardData.getData("text"));
                           }}
-                          className="w-13 h-15 sm:w-14 sm:h-16 text-center text-[24px] font-bold border-2 border-[#1f3a2c] focus:border-[#02cb5a] rounded-xl outline-none focus:ring-2 focus:ring-[#02cb5a]/20 bg-white shadow-2xs transition-all disabled:opacity-60"
+                          className="w-11 h-14 sm:w-13 sm:h-15 text-center text-[22px] sm:text-[24px] font-bold border-2 border-[#1f3a2c] focus:border-[#02cb5a] rounded-xl outline-none focus:ring-2 focus:ring-[#02cb5a]/20 bg-white shadow-2xs transition-all disabled:opacity-60"
                         />
                       ))}
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={handlePasteButton}
+                      disabled={isVerifying}
+                      className="-mt-2 mx-auto flex items-center gap-1.5 text-[12.5px] font-semibold text-[#1f3a2c] border border-[#d6d3cb] hover:border-[#1f3a2c] rounded-lg px-3 py-1.5 transition-colors cursor-pointer disabled:opacity-60"
+                    >
+                      <ClipboardPaste size={14} /> Paste code from email
+                    </button>
 
                     {inlineError && (
                       <p className="text-[12.5px] font-semibold text-[#c53030] bg-[#fff5f5] border border-[#feb2b2] rounded-lg p-2.5 text-center">
@@ -550,7 +603,8 @@ export default function LoginPage() {
                         type="button"
                         onClick={() => {
                           setOtpSent(false);
-                          setOtpCode(["", "", "", ""]);
+                          setOtpCode(["", "", "", "", "", ""]);
+                          setDevCode(null);
                           setInlineError(null);
                         }}
                         className="text-[#747576] hover:text-[#202020] underline cursor-pointer"

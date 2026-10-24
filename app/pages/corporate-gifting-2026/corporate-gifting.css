@@ -1,0 +1,292 @@
+/* ========================================================================= */
+/* Corporate Gifting 2026 - Dedicated Page Styles & Keyframe Animations      */
+/* ========================================================================= */
+
+/* 1. Dotted Budget Ring Animation */
+@keyframes ring-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-ring-spin {
+  animation: ring-spin 28s linear infinite;
+}
+
+.budget-ring-spinner {
+  position: absolute;
+  top: -12px;
+  left: -12px;
+  right: -12px;
+  bottom: -12px;
+  border-radius: 50%;
+  pointer-events: none;
+  border: 5px dotted #F4C430;
+  animation: ring-spin 28s linear infinite;
+  box-sizing: border-box;
+  z-index: 1;
+}
+
+@media (max-width: 767px) {
+  .budget-ring-spinner {
+    top: -8px;
+    left: -8px;
+    right: -8px;
+    bottom: -8px;
+    border-width: 3.5px;
+  }
+}
+
+.budget-ring-target {
+  --ring-colour: #F4C430;
+  --ring-dot: 5px;
+  --ring-gap: 12px;
+  --ring-speed: 28s;
+
+  position: relative;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.budget-ring-target::before {
+  content: "";
+  position: absolute;
+  box-sizing: border-box;
+  inset: calc(-1 * var(--ring-gap));
+  pointer-events: none;
+
+  border: var(--ring-dot) dotted var(--ring-colour);
+  border-radius: 50%;
+
+  animation: ring-spin var(--ring-speed) linear infinite;
+}
+
+@media (max-width: 767px) {
+  .budget-ring-target {
+    --ring-dot: 3.5px;
+    --ring-gap: 8px;
+  }
+}
+
+/* 2. Stats Ticker Strip Marquee */
+@keyframes replo-marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee-infinite {
+  display: flex;
+  width: max-content;
+  animation: replo-marquee 30s linear infinite;
+}
+
+.animate-marquee-infinite:hover {
+  animation-play-state: paused;
+}
+
+/* 3. Hero Seal Floating Micro-Animation */
+@keyframes float-subtle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.animate-float-subtle {
+  animation: float-subtle 4s ease-in-out infinite;
+}
+
+/* 4. Glass Button Effects */
+@keyframes glass-sheen {
+  0% {
+    transform: translateX(-150%) skewX(-20deg);
+  }
+  100% {
+    transform: translateX(250%) skewX(-20deg);
+  }
+}
+
+.glass-btn {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-btn:hover {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+/* 5. Live Alchemy Button Gloss Sheen */
+button.alchemy-rte,
+a.alchemy-rte {
+  --dw-cycle: 4.5s;
+  --dw-delay: 1.2s;
+  --dw-band: 40%;
+  --dw-peak: rgba(255, 255, 255, 0.28);
+  --dw-mid: rgba(255, 255, 255, 0.1);
+  --dw-edge: rgba(255, 255, 255, 0);
+
+  position: relative !important;
+  overflow: hidden !important;
+  isolation: isolate;
+}
+
+button.alchemy-rte::after,
+a.alchemy-rte::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  left: 0;
+  width: var(--dw-band);
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    var(--dw-edge) 0%,
+    var(--dw-mid) 38%,
+    var(--dw-peak) 50%,
+    var(--dw-mid) 62%,
+    var(--dw-edge) 100%
+  );
+  transform: translate3d(-140%, 0, 0);
+  animation: dw-gloss var(--dw-cycle) linear var(--dw-delay) infinite;
+}
+
+@keyframes dw-gloss {
+  0% {
+    transform: translate3d(-140%, 0, 0);
+    animation-timing-function: cubic-bezier(0.4, 0, 0.35, 1);
+  }
+  32% {
+    transform: translate3d(260%, 0, 0);
+  }
+  100% {
+    transform: translate3d(260%, 0, 0);
+  }
+}
+
+/* 6. Live Animated Dotted Banner Frame */
+[data-dw-frame] {
+  --dw-rule: #E96951;
+  --dw-rule-w: 8px;
+  --dw-dot: #F4C430;
+  --dw-dot-size: 6px;
+  --dw-tile: 12px;
+  --dw-gap: 8px;
+  --dw-speed: 1s;
+  --dw-delay: 1.2s;
+
+  --dw-corner: calc((var(--dw-tile) + var(--dw-dot-size)) / 2);
+  --dw-inset: calc(var(--dw-rule-w) + var(--dw-gap));
+
+  --dw-dot-img: radial-gradient(
+    circle,
+    var(--dw-dot) calc(var(--dw-dot-size) / 2),
+    rgba(0, 0, 0, 0) calc(var(--dw-dot-size) / 2 + 0.5px)
+  );
+
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+[data-dw-frame]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+
+  border: var(--dw-rule-w) solid var(--dw-rule);
+  padding: var(--dw-gap) calc(var(--dw-gap) + var(--dw-corner));
+
+  background-image: var(--dw-dot-img), var(--dw-dot-img);
+  background-size: var(--dw-tile) var(--dw-dot-size),
+                   var(--dw-tile) var(--dw-dot-size);
+  background-repeat: repeat-x, repeat-x;
+  background-position: 0 0, 100% 100%;
+  background-origin: content-box;
+  background-clip: content-box;
+
+  will-change: background-position;
+  animation: dw-rows var(--dw-speed) linear var(--dw-delay) infinite;
+}
+
+[data-dw-frame]::after {
+  content: "";
+  position: absolute;
+  inset: var(--dw-inset);
+  z-index: 2;
+  pointer-events: none;
+
+  padding: var(--dw-corner) 0;
+
+  background-image:
+    var(--dw-dot-img), var(--dw-dot-img),
+    var(--dw-dot-img), var(--dw-dot-img),
+    var(--dw-dot-img), var(--dw-dot-img);
+  background-size:
+    var(--dw-dot-size) var(--dw-tile),
+    var(--dw-dot-size) var(--dw-tile),
+    var(--dw-dot-size) var(--dw-dot-size),
+    var(--dw-dot-size) var(--dw-dot-size),
+    var(--dw-dot-size) var(--dw-dot-size),
+    var(--dw-dot-size) var(--dw-dot-size);
+  background-repeat:
+    repeat-y, repeat-y, no-repeat, no-repeat, no-repeat, no-repeat;
+  background-position:
+    0 100%, 100% 0,
+    0 0, 100% 0, 0 100%, 100% 100%;
+  background-origin:
+    content-box, content-box,
+    padding-box, padding-box, padding-box, padding-box;
+  background-clip:
+    content-box, content-box,
+    padding-box, padding-box, padding-box, padding-box;
+
+  will-change: background-position;
+  animation: dw-cols var(--dw-speed) linear var(--dw-delay) infinite;
+}
+
+@keyframes dw-rows {
+  from { background-position: 0 0, 100% 100%; }
+  to   { background-position: var(--dw-tile) 0,
+                              calc(100% - var(--dw-tile)) 100%; }
+}
+
+@keyframes dw-cols {
+  from {
+    background-position: 0 100%, 100% 0,
+                         0 0, 100% 0, 0 100%, 100% 100%;
+  }
+  to {
+    background-position: 0 calc(100% - var(--dw-tile)),
+                         100% var(--dw-tile),
+                         0 0, 100% 0, 0 100%, 100% 100%;
+  }
+}
+
+@media (max-width: 767px) {
+  [data-dw-frame] {
+    --dw-rule-w: 3px;
+    --dw-gap: 5px;
+    --dw-tile: 10px;
+  }
+}

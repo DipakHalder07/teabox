@@ -2,21 +2,22 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import ProductDetailLayoutWrapper from "@/components/ProductDetailLayoutWrapper";
-import { PRODUCTS } from "@/data/products";
+import { getStoreProduct, getStoreProducts } from "@/lib/catalog";
 
 interface PageProps {
   params: Promise<{ handle: string }>;
 }
 
-export function generateStaticParams() {
-  return PRODUCTS.map((p) => ({
+// Products added later in the admin are rendered on their first visit.
+export async function generateStaticParams() {
+  return (await getStoreProducts()).map((p) => ({
     handle: p.handle || p.id,
   }));
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { handle } = await params;
-  const product = PRODUCTS.find((p) => p.handle === handle || p.id === handle);
+  const product = await getStoreProduct(handle);
 
   if (!product) {
     return {
@@ -44,13 +45,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 async function ProductContent({ params }: PageProps) {
   const { handle } = await params;
-  const product = PRODUCTS.find((p) => p.handle === handle || p.id === handle);
+  const products = await getStoreProducts();
+  const product = products.find((p) => p.handle === handle || p.id === handle);
 
   if (!product) {
     notFound();
   }
 
-  return <ProductDetailLayoutWrapper product={product} />;
+  const related = products.filter((p) => p.category === product.category && p.id !== product.id).slice(0, 4);
+  return <ProductDetailLayoutWrapper product={product} related={related} />;
 }
 
 export default function ProductPage(props: PageProps) {

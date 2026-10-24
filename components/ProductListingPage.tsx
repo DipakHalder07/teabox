@@ -3,14 +3,15 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { SlidersHorizontal, ChevronDown, X, Check } from "lucide-react";
-import { PRODUCTS, COLLECTIONS, Product } from "@/data/products";
+import { COLLECTIONS, Product } from "@/data/products";
 import ProductCard from "./ProductCard";
 
 interface PLPProps {
   initialCollectionId?: string;
+  products: Product[]; // the live catalog from the server (Admin → Products)
 }
 
-export default function ProductListingPage({ initialCollectionId = "all" }: PLPProps) {
+export default function ProductListingPage({ initialCollectionId = "all", products }: PLPProps) {
   const [selectedCollection, setSelectedCollection] = useState<string>(initialCollectionId);
   const [sortBy, setSortBy] = useState<string>("best-selling");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -41,7 +42,7 @@ export default function ProductListingPage({ initialCollectionId = "all" }: PLPP
 
   // Filter logic
   const filteredProducts = useMemo(() => {
-    return PRODUCTS.filter((p) => {
+    return products.filter((p) => {
       // 1. Collection filter
       if (selectedCollection !== "all") {
         if (selectedCollection === "chai" && p.category !== "chai") return false;
@@ -85,6 +86,7 @@ export default function ProductListingPage({ initialCollectionId = "all" }: PLPP
       return true;
     });
   }, [
+    products,
     selectedCollection,
     selectedFormats,
     selectedCaffeine,

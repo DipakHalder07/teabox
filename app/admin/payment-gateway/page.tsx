@@ -17,11 +17,21 @@ import {
   IndianRupee,
   Clock,
   Banknote,
+  Radio,
+  ExternalLink,
 } from "lucide-react";
 import { istDateTime, istTime } from "@/lib/istTime";
 
 interface Overview {
-  toggles: { whatsapp: boolean; sms: boolean; gmail: boolean; cod: boolean };
+  toggles: {
+    whatsapp: boolean;
+    sms: boolean;
+    gmail: boolean;
+    cod: boolean;
+    emailCheckout: boolean;
+    emailOrderAdmin: boolean;
+    emailOrderCustomer: boolean;
+  };
   database: boolean;
   databaseHost?: string | null;
   databaseLocal?: boolean;
@@ -35,9 +45,11 @@ interface Overview {
     alerts: { enabled: boolean; number: string };
   };
   cronConfigured: boolean;
+  adminNotificationEmail?: string;
   publicBaseUrl: string;
   apkUrl: string;
   gmail?: { configured: boolean; connected: boolean; email: string | null; lastPollAt: string | null; lastError: string | null };
+  gmailSender?: { configured: boolean; connected: boolean; email: string | null; lastError: string | null };
   devices?: Array<{
     id: string;
     name: string;
@@ -152,6 +164,45 @@ function Switch({ on, label, disabled, onChange }: { on: boolean; label: string;
 
 type Act = (action: string, payload?: Record<string, unknown>, success?: string) => Promise<Record<string, unknown> | null>;
 
+/** Which notification emails the shop sends. */
+function EmailNotificationsCard({ data, busy, act }: { data: Overview; busy: string; act: Act }) {
+  const rows = [
+    { key: "emailCheckout", title: "Checkout started", detail: "Email me when a customer reaches the payment QR, with start time and the 10-minute deadline." },
+    { key: "emailOrderAdmin", title: "New order", detail: "Email me each new order (paid UPI or COD)." },
+    { key: "emailOrderCustomer", title: "Customer order confirmation", detail: "Email the customer their order details, if they gave an email." },
+  ] as const;
+
+  return (
+    <Card>
+      <CardTitle icon={Mail} title="Email notifications" />
+      <p className="text-[12px] text-[#747576] mb-3">
+        Sent to <strong>{data.adminNotificationEmail || "the shop email"}</strong>. Login code emails are always sent.
+      </p>
+      <div className="divide-y divide-[#f0ede6]">
+        {rows.map((row) => {
+          const on = data.toggles[row.key];
+          return (
+            <div key={row.key} className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
+              <div>
+                <div className="text-[13px] font-semibold text-[#202020]">{row.title}</div>
+                <div className="text-[12px] text-[#5c5a52]">{row.detail}</div>
+              </div>
+              <Switch
+                on={on}
+                label={row.title}
+                disabled={busy !== ""}
+                onChange={(next) =>
+                  act("toggle", { key: row.key, enabled: next }, `${row.title} emails turned ${next ? "on" : "off"}`)
+                }
+              />
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 /** Lets customers choose Cash on Delivery at checkout, or not. */
 function CodCard({ data, busy, act }: { data: Overview; busy: string; act: Act }) {
   const on = data.toggles.cod;
@@ -189,7 +240,7 @@ function CodCard({ data, busy, act }: { data: Overview; busy: string; act: Act }
   );
 }
 
-/** Log the shop's WhatsApp in (scan QR / pairing code) and send a test. Works without the database. */
+/** Log the shop's WhatsApp in (scan QR / pairing code) and send a test. */
 function WhatsAppCard({ data, busy, act }: { data: Overview; busy: string; act: Act }) {
   const [phone, setPhone] = useState("");
   const [qr, setQr] = useState<string | null>(null);
@@ -197,7 +248,7 @@ function WhatsAppCard({ data, busy, act }: { data: Overview; busy: string; act: 
   const wa = data.whatsapp;
   const svc = wa.service;
   const connected = wa.provider === "cloud" || Boolean(svc?.connected);
-  const shownQr = svc?.connected ? null : svc?.qrDataUrl || qr;
+  const shownQr = svc?.connected ? null : qr || svc?.qrDataUrl;
 
   const getQr = async () => {
     const r = await act("whatsapp-qr");
@@ -212,135 +263,165 @@ function WhatsAppCard({ data, busy, act }: { data: Overview; busy: string; act: 
     if (r?.code) toast.success("Test code sent on WhatsApp", { description: `Code: ${r.code}` });
   };
 
+  const statusLabel = !wa.provider
+    ? "Not configured"
+    : connected
+    ? "Connected"
+    : svc?.status === "offline"
+    ? "Service offline"
+    : "Waiting for scan";
+
+  const on = data.toggles.whatsapp;
+
   return (
     <Card>
       <CardTitle
         icon={MessageCircle}
-        title="WhatsApp login (OTP)"
+        title="WhatsApp Gateway & Login"
         right={
           <Switch
-            on={data.toggles.whatsapp}
-            label="WhatsApp login"
+            on={on}
+            label="Require WhatsApp code at checkout"
             disabled={busy !== ""}
-            onChange={(on) => act("toggle", { key: "whatsapp", enabled: on }, on ? "WhatsApp login turned on" : "WhatsApp login turned off")}
+            onChange={(next) =>
+              act(
+                "toggle",
+                { key: "whatsapp", enabled: next },
+                next ? "WhatsApp checkout code turned on" : "WhatsApp checkout code turned off"
+              )
+            }
           />
         }
       />
 
-      {!data.toggles.whatsapp && (
+      {!on && (
         <p className="text-[12.5px] text-[#5c5a52]">
           <strong>Off.</strong> Customers go straight to the payment QR. Turn on to send them a WhatsApp code first:
           you will scan a QR with your phone&apos;s WhatsApp once.
         </p>
       )}
 
-      {data.toggles.whatsapp && (
-        <div className="mb-3">
-          <Pill ok={connected}>{!wa.provider ? "Not set up" : connected ? "Connected" : svc?.status === "offline" ? "Service off" : "Waiting for scan"}</Pill>
-        </div>
-      )}
-
-      {data.toggles.whatsapp && !wa.provider && (
-        <p className="text-[12.5px] text-[#5c5a52]">
-          Off: checkout goes straight to the payment QR. To turn on, run the WhatsApp service (
-          <code>npm run whatsapp</code>) and set <code>WHATSAPP_SERVICE_URL</code> and <code>WHATSAPP_SERVICE_TOKEN</code>.
-        </p>
-      )}
-
-      {data.toggles.whatsapp && wa.provider === "qr" && svc?.status === "offline" && (
-        <div className="text-[12.5px] text-[#5c5a52] space-y-1.5">
-          <p>
-            The WhatsApp service is not running, so customers skip the WhatsApp code for now. On this computer,
-            restart the shop with <code>npm run dev</code> (it starts WhatsApp too); online, start it on your
-            always-on server.
-          </p>
-          {svc.error && <p className="text-[11.5px] text-[#9a5b00]">{svc.error}</p>}
-        </div>
-      )}
-
-      {data.toggles.whatsapp && wa.provider === "qr" && svc && svc.status !== "offline" && !svc.connected && (
-        <div className="space-y-3">
-          <ol className="list-decimal pl-5 text-[12.5px] text-[#202020] space-y-0.5">
-            <li>On the phone whose WhatsApp will send the codes, open WhatsApp.</li>
-            <li>
-              Tap <strong>Settings → Linked devices → Link a device</strong>.
-            </li>
-            <li>Scan this QR. This card turns green in a few seconds.</li>
-          </ol>
-          <div className="flex items-center justify-center bg-[#fafafa] border border-[#e7e2d8] rounded-xl w-[232px] h-[232px] mx-auto">
-            {shownQr ? (
-              <img src={shownQr} alt="WhatsApp login QR" className="w-[220px] h-[220px] object-contain" />
-            ) : (
-              <span className="text-[12.5px] text-[#747576] text-center px-4">Preparing QR… tap “New QR” if it does not appear</span>
-            )}
+      {on && (
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <Pill ok={connected}>{statusLabel}</Pill>
+            <span className="text-[11.5px] text-[#747576]">
+              Checkout OTP: <strong>Required</strong>
+            </span>
           </div>
-          <button onClick={getQr} disabled={busy !== ""} className={buttonDark}>
-            <QrCode size={14} /> New QR
-          </button>
-          <div className="border-t border-[#e7e2d8] pt-3 space-y-2">
-            <p className="text-[12px] text-[#5c5a52]">
-              <strong>Can&apos;t scan?</strong> WhatsApp → Linked devices → Link a device →{" "}
-              <strong>Link with phone number instead</strong>, then enter this code:
+
+          {!wa.provider && (
+            <p className="text-[12.5px] text-[#5c5a52]">
+              Run the WhatsApp service (<code>npm run whatsapp</code>) and verify <code>WHATSAPP_SERVICE_URL</code> and{" "}
+              <code>WHATSAPP_SERVICE_TOKEN</code> in <code>.env</code>.
             </p>
-            <div className="flex gap-2">
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="That phone's 10-digit number"
-                className="flex-1 min-w-0 px-3 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13px] outline-none"
-              />
-              <button onClick={getPairingCode} disabled={busy !== ""} className={buttonLight}>
-                Get code
-              </button>
-            </div>
-            {pairingCode && <div className="text-[24px] font-mono font-bold tracking-[0.15em] text-[#1f3a2c]">{pairingCode}</div>}
-          </div>
-          <p className="text-[11px] text-[#9a5b00]">
-            Uses WhatsApp Web linking (unofficial). Use a spare number if possible: WhatsApp may block numbers
-            that send automated messages.
-          </p>
-        </div>
-      )}
-
-      {data.toggles.whatsapp && connected && (
-        <div className="space-y-3">
-          <p className="text-[12.5px] text-[#5c5a52]">
-            {wa.provider === "qr" ? (
-              <>
-                Logged in as <strong>+{svc?.phone}</strong>. Customers get their checkout code from this WhatsApp.
-              </>
-            ) : (
-              "Codes are sent with the official WhatsApp Cloud API."
-            )}
-          </p>
-          <div className="flex gap-2">
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="10-digit number"
-              className="flex-1 min-w-0 px-3 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13px] outline-none"
-            />
-            <button onClick={sendTest} disabled={busy !== ""} className={buttonDark}>
-              <Send size={14} /> Test
-            </button>
-          </div>
-          {wa.provider === "qr" && <OrderAlerts data={data} busy={busy} act={act} />}
-          {wa.provider === "qr" && (
-            <button
-              onClick={() => window.confirm("Log out this WhatsApp? Customers will skip the code until you scan again.") && act("whatsapp-logout", {}, "WhatsApp logged out")}
-              disabled={busy !== ""}
-              className={buttonLight}
-            >
-              Log out
-            </button>
           )}
-        </div>
+
+          {wa.provider === "qr" && svc?.status === "offline" && (
+            <div className="text-[12.5px] text-[#5c5a52] space-y-1.5">
+              <p>
+                The WhatsApp service on port 7071 is offline. Start it in terminal with <code>npm run whatsapp</code> or{" "}
+                <code>npm run dev</code>.
+              </p>
+              {svc.error && <p className="text-[11.5px] text-[#9a5b00]">{svc.error}</p>}
+            </div>
+          )}
+
+          {wa.provider === "qr" && svc && svc.status !== "offline" && !svc.connected && (
+            <div className="space-y-3">
+              <ol className="list-decimal pl-5 text-[12.5px] text-[#202020] space-y-0.5">
+                <li>On your phone, open WhatsApp.</li>
+                <li>
+                  Tap <strong>Settings → Linked devices → Link a device</strong>.
+                </li>
+                <li>Scan this QR code. It will link as a companion device.</li>
+              </ol>
+              <div className="flex items-center justify-center bg-[#fafafa] border border-[#e7e2d8] rounded-xl w-[232px] h-[232px] mx-auto p-2">
+                {shownQr ? (
+                  <img src={shownQr} alt="WhatsApp login QR" className="w-[220px] h-[220px] object-contain" />
+                ) : (
+                  <span className="text-[12.5px] text-[#747576] text-center px-4">Preparing QR… tap “Refresh QR” if it does not appear</span>
+                )}
+              </div>
+              <div className="flex justify-center">
+                <button onClick={getQr} disabled={busy !== ""} className={buttonDark}>
+                  <QrCode size={14} /> Refresh QR
+                </button>
+              </div>
+              <div className="border-t border-[#e7e2d8] pt-3 space-y-2">
+                <p className="text-[12px] text-[#5c5a52]">
+                  <strong>Can&apos;t scan?</strong> WhatsApp → Linked devices → Link a device →{" "}
+                  <strong>Link with phone number instead</strong>, then enter this code:
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="10-digit phone number"
+                    className="flex-1 min-w-0 px-3 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13px] outline-none"
+                  />
+                  <button onClick={getPairingCode} disabled={busy !== ""} className={buttonLight}>
+                    Get code
+                  </button>
+                </div>
+                {pairingCode && (
+                  <div className="text-[24px] font-mono font-bold tracking-[0.15em] text-[#1f3a2c] text-center bg-[#fafafa] py-2 rounded-lg border border-[#e7e2d8]">
+                    {pairingCode}
+                  </div>
+                )}
+              </div>
+              <p className="text-[11px] text-[#9a5b00]">
+                Uses WhatsApp Web linking. Linked device stays logged in and automatically sends verification codes.
+              </p>
+            </div>
+          )}
+
+          {connected && (
+            <div className="space-y-3">
+              <p className="text-[12.5px] text-[#5c5a52]">
+                {wa.provider === "qr" ? (
+                  <>
+                    Logged in as <strong>+{svc?.phone}</strong>. Customers receive checkout codes from this WhatsApp.
+                  </>
+                ) : (
+                  "Codes are sent with official WhatsApp Cloud API."
+                )}
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="10-digit number to test"
+                  className="flex-1 min-w-0 px-3 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13px] outline-none"
+                />
+                <button onClick={sendTest} disabled={busy !== ""} className={buttonDark}>
+                  <Send size={14} /> Test Send
+                </button>
+              </div>
+              {wa.provider === "qr" && <OrderAlerts data={data} busy={busy} act={act} />}
+              {wa.provider === "qr" && (
+                <button
+                  onClick={() =>
+                    window.confirm("Log out this WhatsApp? You can scan a new QR code to link again.") &&
+                    act("whatsapp-logout", {}, "WhatsApp logged out")
+                  }
+                  disabled={busy !== ""}
+                  className={buttonLight}
+                >
+                  Log out
+                </button>
+              )}
+            </div>
+          )}
+        </>
       )}
     </Card>
   );
 }
+
+
 
 /** WhatsApp alert to the shop for every new UPI order (with a link to confirm it). */
 function OrderAlerts({ data, busy, act }: { data: Overview; busy: string; act: Act }) {
@@ -409,6 +490,13 @@ export default function AdminPaymentGatewayPage() {
     enrollmentToken: string;
   } | null>(null);
   const [assignTo, setAssignTo] = useState<Record<string, string>>({});
+  const [markingSession, setMarkingSession] = useState<{
+    id: string;
+    orderNumber: string;
+    customerName?: string;
+    amount?: string;
+  } | null>(null);
+  const [confirmUtr, setConfirmUtr] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -435,7 +523,10 @@ export default function AdminPaymentGatewayPage() {
       if (gmail === "connected") toast.success("Gmail connected", { description: params.get("email") || undefined });
       if (gmail === "error") toast.error("Gmail was not connected", { description: params.get("message") || undefined });
       if (gmail === "not-configured") toast.error("Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET first");
-      if (gmail) window.history.replaceState(null, "", window.location.pathname);
+      const gmailSend = params.get("gmailSend");
+      if (gmailSend === "connected") toast.success("Sending Gmail connected", { description: params.get("email") || undefined });
+      if (gmailSend === "error") toast.error("Sending Gmail was not connected", { description: params.get("message") || undefined });
+      if (gmail || gmailSend) window.history.replaceState(null, "", window.location.pathname);
     }, 0);
     return () => clearTimeout(first);
   }, [load]);
@@ -489,10 +580,22 @@ export default function AdminPaymentGatewayPage() {
     if (result) setPairing(result);
   };
 
-  const markPaid = async (sessionId: string, orderNumber: string) => {
-    const utr = window.prompt(`Mark ${orderNumber} as paid?\nUPI reference / UTR from your bank (optional):`, "");
-    if (utr === null) return;
-    await act("mark-paid", { sessionId, utr }, `${orderNumber} marked paid`);
+  const openMarkPaidModal = (s: { id: string; orderNumber: string; customerName?: string; payAmount?: string }) => {
+    setMarkingSession({
+      id: s.id,
+      orderNumber: s.orderNumber,
+      customerName: s.customerName,
+      amount: s.payAmount,
+    });
+    setConfirmUtr("");
+  };
+
+  const submitMarkPaid = async () => {
+    if (!markingSession) return;
+    const s = markingSession;
+    const utr = confirmUtr.trim() || null;
+    setMarkingSession(null);
+    await act("mark-paid", { sessionId: s.id, utr }, `${s.orderNumber} marked paid`);
   };
 
   const openSessions = (data?.sessions || []).filter((s) => s.status !== "PAID");
@@ -622,7 +725,7 @@ export default function AdminPaymentGatewayPage() {
                           </div>
                         </div>
                         <div className="flex gap-1.5 shrink-0">
-                          <button onClick={() => markPaid(s.id, s.orderNumber)} disabled={busy !== ""} className={buttonDark}>
+                          <button onClick={() => openMarkPaidModal(s)} disabled={busy !== ""} className={buttonDark}>
                             Mark paid
                           </button>
                           <button onClick={() => act("cancel-session", { sessionId: s.id }, "Cancelled")} disabled={busy !== ""} className={buttonLight}>
@@ -820,6 +923,57 @@ export default function AdminPaymentGatewayPage() {
               )}
             </Card>
 
+            <Card>
+              <CardTitle icon={Send} title="Login code emails" />
+              {!data.gmailSender?.configured ? (
+                <div className="text-[12.5px] text-[#5c5a52] space-y-2">
+                  <p>
+                    Create a Google OAuth app with the Gmail API enabled, then set <code>GOOGLE_CLIENT_ID</code> and{" "}
+                    <code>GOOGLE_CLIENT_SECRET</code>. Add this redirect URI:
+                  </p>
+                  <code className="block break-all bg-[#fafafa] border border-[#e7e2d8] rounded-lg px-2 py-1.5 text-[11.5px]">{gmailRedirect}</code>
+                </div>
+              ) : data.gmailSender.connected ? (
+                <div className="space-y-3">
+                  <div className="text-[13px] text-[#202020]">
+                    Login codes and order emails are sent from <strong>{data.gmailSender.email}</strong>
+                  </div>
+                  {data.gmailSender.lastError && <div className="text-[12px] text-[#c62828]">{data.gmailSender.lastError}</div>}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={async () => {
+                        const result = await act("gmail-sender-test");
+                        if (result?.to) toast.success("Test email sent", { description: result.to });
+                      }}
+                      disabled={busy !== ""}
+                      className={buttonDark}
+                    >
+                      <Send size={14} /> Send test email
+                    </button>
+                    <button
+                      onClick={() => window.confirm("Stop sending emails from this Gmail?") && act("gmail-sender-disconnect", {}, "Sending Gmail disconnected")}
+                      disabled={busy !== ""}
+                      className={buttonLight}
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-[12.5px] text-[#5c5a52]">
+                    Sign in with the Gmail account that should send customers their login codes. No password is
+                    stored; this permission can only send email, not read your inbox.
+                  </p>
+                  <a href="/api/admin/gateway/gmail/connect?purpose=send" className={buttonDark}>
+                    <Mail size={14} /> Sign in with Google
+                  </a>
+                </div>
+              )}
+            </Card>
+
+            <EmailNotificationsCard data={data} busy={busy} act={act} />
+
             <WhatsAppCard data={data} busy={busy} act={act} />
           </div>
 
@@ -920,7 +1074,7 @@ export default function AdminPaymentGatewayPage() {
                       <td className="px-4 py-2.5 text-right whitespace-nowrap">
                         {s.status !== "PAID" && (
                           <div className="inline-flex gap-1.5">
-                            <button onClick={() => markPaid(s.id, s.orderNumber)} disabled={busy !== ""} className={buttonLight}>
+                            <button onClick={() => openMarkPaidModal(s)} disabled={busy !== ""} className={buttonLight}>
                               Mark paid
                             </button>
                             {(s.status === "PENDING" || s.status === "VERIFYING") && (
@@ -959,6 +1113,89 @@ export default function AdminPaymentGatewayPage() {
             ))}
           </ul>
         </Card>
+      )}
+
+      {/* Mark Paid Confirmation Modal */}
+      {markingSession && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-[#e7e2d8] space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-[#efece5] pb-3">
+              <div className="flex items-center gap-2">
+                <CircleCheck size={20} className="text-[#016c2f]" />
+                <h3 className="font-bold text-[17px] text-[#1f3a2c]">Confirm Order Payment</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMarkingSession(null)}
+                className="text-[#747576] hover:text-[#202020] p-1 rounded-lg text-[18px] leading-none cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-[#f7f6f2] rounded-xl p-3.5 space-y-1.5 text-[13px]">
+              <div className="flex justify-between">
+                <span className="text-[#747576]">Order:</span>
+                <span className="font-mono font-bold text-[#1f3a2c]">{markingSession.orderNumber}</span>
+              </div>
+              {markingSession.customerName && (
+                <div className="flex justify-between">
+                  <span className="text-[#747576]">Customer:</span>
+                  <span className="font-semibold text-[#202020]">{markingSession.customerName}</span>
+                </div>
+              )}
+              {markingSession.amount && (
+                <div className="flex justify-between">
+                  <span className="text-[#747576]">Amount:</span>
+                  <span className="font-bold text-[#016c2f]">₹{markingSession.amount}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-[12.5px] font-semibold text-[#202020]">
+                UPI Reference / UTR Number <span className="text-[#747576] font-normal">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={confirmUtr}
+                onChange={(e) => setConfirmUtr(e.target.value)}
+                placeholder="12-digit UTR from your bank (or leave blank)"
+                className="w-full px-3 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13px] outline-none"
+                autoFocus
+              />
+              <p className="text-[11.5px] text-[#747576]">
+                Leave blank to mark paid immediately without UTR.
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setMarkingSession(null)}
+                className="flex-1 py-2.5 px-4 rounded-xl border border-[#e7e2d8] hover:bg-[#fafafa] font-semibold text-[13px] text-[#202020] cursor-pointer"
+                disabled={busy !== ""}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitMarkPaid}
+                disabled={busy !== ""}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-[#016c2f] hover:bg-[#1f3a2c] text-white font-bold text-[13px] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {busy === "mark-paid" ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>Confirming…</span>
+                  </>
+                ) : (
+                  <span>Confirm Paid</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

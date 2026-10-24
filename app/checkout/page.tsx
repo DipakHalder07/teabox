@@ -112,6 +112,14 @@ export default function CheckoutPage() {
 
   const formValues = watch();
 
+  // Signed-in customer: fill their account email so the order appears under My Orders
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("teabox_customer_user") || "null");
+      if (saved?.email) setValue("email", saved.email);
+    } catch {}
+  }, [setValue]);
+
   // Auto scroll to top on step transition
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });

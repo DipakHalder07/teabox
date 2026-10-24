@@ -59,6 +59,12 @@ body {
   font-family: var(--font-stencil);
   letter-spacing: -0.3px;
 }
+.font-stencil-reg {
+  font-family: 'TeaboxStencilRegular', var(--font-poppins), sans-serif;
+}
+.font-stencil-med {
+  font-family: 'TeaboxStencilMedium', var(--font-poppins), sans-serif;
+}
 
 /* Teabox Signature Buttons */
 .av-btn {
@@ -137,3 +143,5 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+

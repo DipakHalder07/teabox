@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
 
-    // Manual UPI fallback (the TeaPay gateway is used when the database is available).
+    // Native UPI payment session for Teabox
     const session = await createManualUpiPayment({ orderId, amount: numericAmount, note });
 
     return NextResponse.json({
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
       data: session,
     });
   } catch (error: any) {
-    console.error("Error creating YouPI payment:", error);
+    console.error("Error creating payment:", error);
     return NextResponse.json(
       { error: error?.message || "Failed to create payment session" },
       { status: 500 }
