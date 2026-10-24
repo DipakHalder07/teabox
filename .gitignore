@@ -30,11 +30,14 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
-.env*
-*.env
-*.env.*
+# env files (tracking enabled per user request)
+# .env*
+# *.env
+# *.env.*
 !.env.example
+!.env
+!.env.local
+!.env.production
 
 # scratch scripts
 /scratch/
