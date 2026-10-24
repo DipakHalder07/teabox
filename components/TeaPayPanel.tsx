@@ -125,7 +125,7 @@ async function postJson(url: string, body: unknown) {
   return { ok: res.ok, data };
 }
 
-const UPI_APPS = [
+export const UPI_APPS = [
   { key: "gpay", label: "Google Pay", icon: "/assets/upi/gpay.png" },
   { key: "phonepe", label: "PhonePe", icon: "/assets/upi/phonepe.png" },
   { key: "paytm", label: "Paytm", icon: "/assets/upi/paytm.png" },
@@ -133,9 +133,53 @@ const UPI_APPS = [
   { key: "generic", label: "Any App", icon: "/assets/upi/bhim.png" },
 ] as const;
 
-function formatClock(totalSeconds: number) {
+export function formatClock(totalSeconds: number) {
   const s = Math.max(0, totalSeconds);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/** Shown when the payment window closes (or the payment was cancelled). */
+export function UpiExpiredNotice({
+  amountLabel,
+  cancelled = false,
+  onRestart,
+}: {
+  amountLabel: string;
+  cancelled?: boolean;
+  onRestart: () => void;
+}) {
+  return (
+    <div className="bg-white border border-[#e7e2d8] rounded-xl p-5 sm:p-6 text-center space-y-4">
+      <div className="w-12 h-12 rounded-full bg-[#fff8e6] text-[#9a5b00] flex items-center justify-center mx-auto">
+        <Clock size={22} />
+      </div>
+      <div className="space-y-1">
+        <h4 className="font-bold text-[16px] text-[#1f3a2c]">
+          {cancelled ? "This payment was cancelled" : "Your payment session has expired"}
+        </h4>
+        <p className="text-[13px] text-[#5c5a52] max-w-[380px] mx-auto">
+          {cancelled
+            ? "No money has been taken. You can start again whenever you are ready."
+            : "For your security, each UPI QR code is valid for 10 minutes. If you did not pay, nothing was deducted from your account."}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onRestart}
+        className="w-full sm:w-auto bg-[#02cb5a] hover:bg-[#02b851] text-[#1f3a2c] px-6 py-3 rounded-lg font-bold text-[13.5px] uppercase tracking-wider flex items-center justify-center gap-2 mx-auto cursor-pointer"
+      >
+        <RefreshCw size={15} />
+        Generate a new QR code
+      </button>
+      <div className="bg-[#f0f8f4] border border-[#bfdcc9] rounded-lg p-3 text-left text-[12.5px] text-[#1f3a2c] flex gap-2">
+        <ShieldCheck size={16} className="text-[#016c2f] shrink-0 mt-0.5" />
+        <span>
+          <strong>Already paid {amountLabel}?</strong> Please do not pay again. Keep this page open and we will
+          confirm your order as soon as the bank reports the payment, usually within a few minutes.
+        </span>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -160,7 +204,6 @@ export default function TeaPayPanel({
   const [otpCode, setOtpCode] = useState("");
   const [devCode, setDevCode] = useState<string | undefined>();
   const [resendIn, setResendIn] = useState(0);
-  const [utr, setUtr] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -262,21 +305,6 @@ export default function TeaPayPanel({
     applyView(data);
   };
 
-  const markPaid = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanUtr = utr.replace(/\D/g, "");
-    if (cleanUtr && cleanUtr.length !== 12) {
-      setError("The UPI reference has 12 digits. You can also leave it empty.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    const { ok, data } = await postJson("/api/pay/paid", { sessionId: session.sessionId, utr: cleanUtr || undefined });
-    setBusy(false);
-    if (!ok) setError(data?.error || "Please try again.");
-    else applyView(data);
-  };
-
   const amountLabel = `₹${Number(view.payAmount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
 
   if (needsOtp) {
@@ -358,26 +386,10 @@ export default function TeaPayPanel({
     );
   }
 
-  if (view.status === "EXPIRED" || view.status === "CANCELLED") {
-    return (
-      <div className="bg-white border border-[#e7e2d8] rounded-xl p-5 text-center space-y-3">
-        <TriangleAlert size={22} className="mx-auto text-[#c62828]" />
-        <p className="text-[13px] text-[#202020]">
-          {view.status === "EXPIRED"
-            ? "The payment window has closed."
-            : "This payment was cancelled."}{" "}
-          If you already paid {amountLabel}, keep this page open: it confirms automatically when your bank
-          reports it.
-        </p>
-        <button
-          type="button"
-          onClick={onRestart}
-          className="bg-[#02cb5a] hover:bg-[#02b851] text-[#1f3a2c] px-5 py-2 rounded-lg font-bold text-[13px] uppercase tracking-wider cursor-pointer"
-        >
-          Start a new payment
-        </button>
-      </div>
-    );
+  // The server flips PENDING to EXPIRED on the next poll; show it the moment the clock hits zero.
+  const expired = view.status === "EXPIRED" || (view.status === "PENDING" && secondsLeft <= 0);
+  if (expired || view.status === "CANCELLED") {
+    return <UpiExpiredNotice amountLabel={amountLabel} cancelled={view.status === "CANCELLED"} onRestart={onRestart} />;
   }
 
   return (
@@ -398,7 +410,8 @@ export default function TeaPayPanel({
           <div className="text-[24px] sm:text-[26px] font-bold text-[#1f3a2c]">{amountLabel}</div>
           {view.adjustmentPaise > 0 && (
             <div className="text-[11.5px] text-[#5c5a52]">
-              Gateway Fee: ₹{(view.adjustmentPaise / 100).toFixed(2)}
+              Order ₹{view.orderTotal.toLocaleString("en-IN")} − ₹{(view.adjustmentPaise / 100).toFixed(2)} instant-verify
+              discount
             </div>
           )}
           <div className="text-[12px] sm:text-[12.5px] text-[#5c5a52] break-all sm:break-normal">
@@ -433,37 +446,44 @@ export default function TeaPayPanel({
         </div>
       )}
 
-      {view.status === "VERIFYING" ? (
-        <div className="bg-[#f0f8f4] border border-[#bfdcc9] rounded-lg p-3 flex items-center gap-2 text-[13px] text-[#1f3a2c]">
-          <RefreshCw size={15} className="animate-spin text-[#016c2f] shrink-0" />
-          <span>Checking with the bank. This usually takes under a minute; keep this page open.</span>
-        </div>
-      ) : (
-        <form onSubmit={markPaid} className="space-y-2">
-          <input
-            type="text"
-            inputMode="numeric"
-            maxLength={16}
-            value={utr}
-            onChange={(e) => setUtr(e.target.value)}
-            placeholder="UPI reference / UTR (optional, 12 digits)"
-            className="w-full px-3.5 py-2 border border-[#e7e2d8] focus:border-[#02cb5a] rounded-lg text-[13px] font-mono bg-white outline-none"
-          />
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full bg-[#1f3a2c] hover:bg-[#14281e] disabled:opacity-60 text-white py-3 rounded-lg font-bold text-[14px] flex items-center justify-center gap-2 transition-colors cursor-pointer"
-          >
-            {busy ? <RefreshCw size={15} className="animate-spin" /> : <CheckCircle2 size={16} />}
-            <span>I&apos;ve completed the payment</span>
-          </button>
-        </form>
-      )}
-
-      <p className="text-[11.5px] text-[#747576] text-center">
-        Your order is placed automatically as soon as our bank receives the money.
-      </p>
+      <PaymentStatusBar verifying={view.status === "VERIFYING"} />
       {error && <p className="text-[12.5px] text-[#e53935]">{error}</p>}
+    </div>
+  );
+}
+
+/** Live status line under the QR: the page confirms by itself, no button to press. */
+export function PaymentStatusBar({ verifying = false }: { verifying?: boolean }) {
+  return (
+    <div className="space-y-2.5">
+      <div
+        className="bg-[#f0f8f4] border border-[#bfdcc9] rounded-lg px-3.5 py-3 flex items-center gap-3 text-left"
+        role="status"
+        aria-live="polite"
+      >
+        {verifying ? (
+          <RefreshCw size={16} className="animate-spin text-[#016c2f] shrink-0" />
+        ) : (
+          <span className="relative flex w-2.5 h-2.5 shrink-0">
+            <span className="absolute inline-flex w-full h-full rounded-full bg-[#02cb5a] opacity-75 animate-ping" />
+            <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-[#02cb5a]" />
+          </span>
+        )}
+        <div className="min-w-0">
+          <div className="font-bold text-[13px] text-[#1f3a2c]">
+            {verifying ? "Confirming your payment with the bank..." : "Waiting for your payment"}
+          </div>
+          <div className="text-[11.5px] text-[#5c5a52]">
+            {verifying
+              ? "This usually takes under a minute. Please keep this page open."
+              : "After you pay, this page updates automatically. Please don't close or refresh it."}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center justify-center gap-1.5 text-[11px] text-[#8e8d8a]">
+        <ShieldCheck size={12} className="text-[#016c2f]" />
+        <span>Secured by UPI · Money goes directly to the shop&apos;s bank account</span>
+      </div>
     </div>
   );
 }

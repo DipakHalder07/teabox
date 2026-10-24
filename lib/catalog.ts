@@ -100,9 +100,10 @@ export async function getStoreProducts(): Promise<Product[]> {
   cacheTag(PRODUCTS_TAG);
   const rows = await loadActiveRows();
   if (!rows) {
-    cacheLife("seconds"); // database down: retry soon instead of keeping the fallback
+    cacheLife("minutes"); // database down: retry after 1m instead of 1s (which broke prerender)
     return PRODUCTS.map((p) => ({ ...p, variants: productVariants(p) }));
   }
+  cacheLife("hours");
   return rows.map(rowToProduct);
 }
 

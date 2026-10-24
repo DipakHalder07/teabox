@@ -6,20 +6,24 @@ import Link from "next/link";
 import { Star } from "lucide-react";
 import { Product } from "@/data/products";
 import { useCart } from "./context/CartContext";
+import { findVariant } from "@/lib/productVariants";
 
 export default function ProductCard({ product }: { product: Product }) {
   const { addToCart } = useCart();
   const productUrl = product.url || `/products/${product.handle || product.id}`;
   const [isHovered, setIsHovered] = useState(false);
+  // The size this button adds, at that size's price (not the product's headline price).
+  const variant = findVariant(product, product.weight);
+  const weight = product.weight ? variant.name : "";
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     addToCart({
-      id: `${product.id}-${product.weight || "default"}`,
+      id: `${product.id}-${weight || "default"}`,
       title: product.title,
-      weight: product.weight || "",
-      price: product.price,
+      weight,
+      price: variant.price,
       image: product.image,
     });
   };
@@ -27,9 +31,9 @@ export default function ProductCard({ product }: { product: Product }) {
   const hasMultipleSizes = product.weights && product.weights.length > 1;
 
   // Format button label matching live site: e.g. "ADD 250G — ₹200" or "ADD — ₹1,199"
-  const buttonLabel = product.weight
-    ? `ADD ${product.weight.toUpperCase()} — ₹${product.price.toLocaleString("en-IN")}`
-    : `ADD — ₹${product.price.toLocaleString("en-IN")}`;
+  const buttonLabel = weight
+    ? `ADD ${weight.toUpperCase()} — ₹${variant.price.toLocaleString("en-IN")}`
+    : `ADD — ₹${variant.price.toLocaleString("en-IN")}`;
 
   return (
     <div

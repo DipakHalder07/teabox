@@ -90,3 +90,15 @@ export async function priceOrder(input: {
 
   return { items, subtotal, discountAmount, shippingFee, codFee, totalAmount };
 }
+
+/**
+ * Today's price for each cart line (null when the product no longer exists), so the cart can
+ * show exactly what checkout will charge. Never throws for sold-out lines: checkout reports those.
+ */
+export async function priceCartLines(items: Array<{ productId?: string | null; weight?: string | null }>) {
+  const catalog = await getStoreProducts();
+  return items.map((item) => {
+    const product = findProduct(catalog, item.productId);
+    return product ? findVariant(product, item.weight).price : null;
+  });
+}

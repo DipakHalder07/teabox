@@ -52,10 +52,12 @@ export async function isDatabaseConnected(): Promise<boolean> {
   }
 
   try {
-    // 1.2s timeout race to never stall API responses
+    // 5s timeout during build/CI to allow remote serverless DB handshake; 2.5s during runtime
+    const timeoutMs =
+      process.env.NEXT_PHASE === "phase-production-build" || process.env.CI || process.env.VERCEL ? 5000 : 2500;
     const probe = prisma.$queryRaw`SELECT 1`;
     const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Database connection timeout")), 1200)
+      setTimeout(() => reject(new Error("Database connection timeout")), timeoutMs)
     );
 
     await Promise.race([probe, timeout]);
