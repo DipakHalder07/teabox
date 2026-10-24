@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { IMAGE_HOSTS } from "./lib/productImages";
 
 // Sent with every page and API response (locally and on Vercel).
 const securityHeaders = [
@@ -30,23 +31,22 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
-      { source: "/admin/:path*", headers: privateHeaders },
+      // Admin may use the camera (product photos); the rest of the site may not
+      {
+        source: "/admin/:path*",
+        headers: [
+          ...privateHeaders,
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(), browsing-topics=()" },
+        ],
+      },
       { source: "/pay-review/:path*", headers: [...privateHeaders, { key: "Referrer-Policy", value: "no-referrer" }] },
       { source: "/api/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex" }] },
       { source: "/api/admin/:path*", headers: [{ key: "Cache-Control", value: "no-store" }] },
     ];
   },
   images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "in.teabox.com",
-      },
-      {
-        protocol: "https",
-        hostname: "cdn.shopify.com",
-      },
-    ],
+    // Product images: these hosts, local files and photos uploaded in the admin (lib/productImages.ts)
+    remotePatterns: IMAGE_HOSTS.map((hostname) => ({ protocol: "https" as const, hostname })),
   },
   cacheComponents: true,
   partialPrefetching: true,

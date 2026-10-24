@@ -85,8 +85,8 @@ export default function AccountPage() {
         localStorage.setItem(`teabox_saved_cart_${email.replace(/[^a-zA-Z0-9]/g, "_")}`, JSON.stringify(cartItems));
       }
       localStorage.removeItem("teabox_customer_user");
-      document.cookie = "teabox_customer_session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
     } catch {}
+    fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     clearCart();
     toast.info("Signed out");
     router.replace("/account/login");

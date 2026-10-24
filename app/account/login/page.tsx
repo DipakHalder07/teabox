@@ -50,8 +50,8 @@ export default function LoginPage() {
         if (parsed?.email) {
           setIsLoggedIn(true);
           setLoggedInUser(parsed.email);
-          // Already signed in: go to My Orders
-          if (document.cookie.includes("teabox_customer_session=")) router.replace("/account");
+          // Already signed in: go to My Orders (it sends signed-out visitors back here)
+          router.replace("/account");
         }
       }
     } catch {}
@@ -304,8 +304,8 @@ export default function LoginPage() {
     }
     try {
       localStorage.removeItem("teabox_customer_user");
-      document.cookie = "teabox_customer_session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
     } catch {}
+    fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     setIsLoggedIn(false);
     setLoggedInUser("");
     setOtpSent(false);
@@ -453,31 +453,20 @@ export default function LoginPage() {
 
                     <p className="text-[11.5px] text-[#747576] leading-tight pt-1">
                       By proceeding, you agree to Teabox&apos;s{" "}
-                      <Link href="#terms" className="underline font-medium text-[#202020]">
+                      <Link href="/terms" className="underline font-medium text-[#202020]">
                         Terms
                       </Link>{" "}
                       and{" "}
-                      <Link href="#privacy" className="underline font-medium text-[#202020]">
+                      <Link href="/privacy" className="underline font-medium text-[#202020]">
                         Privacy Policy
                       </Link>.
                     </p>
 
-                    <div className="pt-3 border-t border-[#e7e2d8] mt-4 flex items-center justify-between text-[13px]">
-                      <button
-                        type="button"
-                        onClick={() => setViewMode("password")}
-                        className="text-[#5c5a52] hover:text-[#202020] hover:underline font-medium cursor-pointer"
-                      >
-                        Use Password
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setViewMode("register")}
-                        className="text-[#016c2f] hover:underline font-bold cursor-pointer"
-                      >
-                        Create Password Account
-                      </button>
-                    </div>
+                    {/* Email code is the only sign-in: the old password and register screens only
+                        pretended to log in (nothing was checked on the server), so they are not offered */}
+                    <p className="pt-3 border-t border-[#e7e2d8] mt-4 text-[12.5px] text-[#5c5a52]">
+                      No password needed. New here? Your account is created when you enter the code.
+                    </p>
                   </form>
                 ) : (
                   /* STEP 2: Enter Verification Code */

@@ -24,8 +24,15 @@ export function publicBaseUrl(req: NextRequest) {
   return req.nextUrl.origin;
 }
 
+/**
+ * The visitor's IP, used for abuse limits. Headers set by the hosting platform come first; in
+ * X-Forwarded-For only the last entry (added by the host's own proxy) can't be faked by a visitor.
+ */
 export function clientIp(req: NextRequest) {
-  return (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || req.headers.get("x-real-ip") || null;
+  const fromHost = req.headers.get("x-vercel-forwarded-for") || req.headers.get("x-real-ip");
+  if (fromHost) return fromHost.split(",")[0].trim();
+  const chain = (req.headers.get("x-forwarded-for") || "").split(",").map((s) => s.trim()).filter(Boolean);
+  return chain[chain.length - 1] || null;
 }
 
 /** A phone verified by WhatsApp code is remembered for 30 days on this browser. */

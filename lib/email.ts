@@ -106,7 +106,7 @@ function buildAdminOrderNotificationHtml(order: OrderEmailDetails): string {
     <html>
       <head>
         <meta charset="utf-8">
-        <title>New Order Alert: ${order.orderNumber}</title>
+        <title>New Order Alert: ${esc(order.orderNumber)}</title>
         <style>
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f7f5f0; margin: 0; padding: 24px; color: #202020; }
           .container { max-width: 620px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e7e2d8; box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
@@ -138,7 +138,7 @@ function buildAdminOrderNotificationHtml(order: OrderEmailDetails): string {
                 ${order.paymentMethod.toUpperCase()} — ${order.paymentStatus}
               </span>
               <span class="badge" style="background: #eef2f0; color: #1f3a2c; margin-left: 6px;">
-                Order #${order.orderNumber}
+                Order #${esc(order.orderNumber)}
               </span>
             </div>
 
@@ -151,15 +151,15 @@ function buildAdminOrderNotificationHtml(order: OrderEmailDetails): string {
 
             <div class="customer-box">
               <strong style="color: #1f3a2c; font-size: 14px;">👤 Customer Information:</strong><br>
-              <strong>Name:</strong> ${order.customerName}<br>
-              <strong>Phone:</strong> ${order.customerPhone || "Not provided"}<br>
-              <strong>Email:</strong> ${order.customerEmail || "Not provided"}<br>
+              <strong>Name:</strong> ${esc(order.customerName)}<br>
+              <strong>Phone:</strong> ${esc(order.customerPhone || "Not provided")}<br>
+              <strong>Email:</strong> ${esc(order.customerEmail || "Not provided")}<br>
               <br>
               <strong style="color: #1f3a2c; font-size: 14px;">📍 Shipping Address:</strong><br>
-              ${order.address}<br>
-              ${order.landmark ? `Landmark: ${order.landmark}<br>` : ""}
-              ${order.city}, ${order.state} - <strong>${order.pincode}</strong><br>
-              ${order.utrNumber ? `<br><strong style="color: #016c2f;">💳 UPI UTR / Ref No:</strong> ${order.utrNumber}` : ""}
+              ${esc(order.address)}<br>
+              ${order.landmark ? `Landmark: ${esc(order.landmark)}<br>` : ""}
+              ${esc(order.city)}, ${esc(order.state)} - <strong>${esc(order.pincode)}</strong><br>
+              ${order.utrNumber ? `<br><strong style="color: #016c2f;">💳 UPI UTR / Ref No:</strong> ${esc(order.utrNumber)}` : ""}
             </div>
 
             <h3 style="font-size: 15px; margin: 20px 0 8px; color: #1f3a2c; text-transform: uppercase; letter-spacing: 0.5px;">
@@ -180,8 +180,8 @@ function buildAdminOrderNotificationHtml(order: OrderEmailDetails): string {
                   .map(
                     (item) => `
                   <tr>
-                    <td><strong>${item.title}</strong></td>
-                    <td style="color: #5c5a52;">${item.weight || "100G"}</td>
+                    <td><strong>${esc(item.title)}</strong></td>
+                    <td style="color: #5c5a52;">${esc(item.weight || "")}</td>
                     <td style="text-align: center;">${item.quantity}</td>
                     <td style="text-align: right; font-weight: bold;">₹${item.price * item.quantity}</td>
                   </tr>`

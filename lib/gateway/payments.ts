@@ -1,7 +1,8 @@
 import crypto from "crypto";
 import { Prisma, PaymentSession } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { priceOrder, PricedOrder, OrderLineInput } from "@/lib/orderPricing";
+import { priceOrder, PricedOrder, OrderLineInput, PricingError } from "@/lib/orderPricing";
+import { consumeStock } from "@/lib/catalog";
 import { after } from "next/server";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { alertPaid } from "./alerts";
@@ -74,7 +75,13 @@ export async function startPayment(input: CheckoutInput) {
   const { upiId, payeeName } = getUpiConfig();
   if (!upiId) throw new GatewayError("UPI payments are not configured", 503);
 
-  const priced = priceOrder({ items: input.items, couponCode: input.couponCode, paymentMethod: "upi" });
+  let priced: PricedOrder;
+  try {
+    priced = await priceOrder({ items: input.items, couponCode: input.couponCode, paymentMethod: "upi" });
+  } catch (err) {
+    if (err instanceof PricingError) throw new GatewayError(err.message, 400);
+    throw err;
+  }
   const orderPaise = priced.totalAmount * 100;
   if (orderPaise < 200) throw new GatewayError("Order total is too small for UPI", 400);
 
@@ -236,6 +243,7 @@ export async function markSessionPaid(
   });
 
   if (result) {
+    await consumeStock(result.items);
     const settled = await prisma.paymentSession.findUnique({ where: { id: sessionId } });
     if (settled) {
       // After the response, so a phone or customer request is not slowed down by WhatsApp.

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { subscribeCustomer } from "@/lib/customersDb";
+import { limitByIp } from "@/lib/rateLimit";
 
 export async function POST(req: NextRequest) {
+  const limited = limitByIp(req, "newsletter", 5, 10 * 60 * 1000);
+  if (limited) return limited;
+
   try {
     const body = await req.json();
     const { email, name } = body || {};

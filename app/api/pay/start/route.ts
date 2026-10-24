@@ -6,10 +6,15 @@ import { errorResponse, publicBaseUrl, sessionView, verifiedPhoneFromCookie } fr
 import { alertNewCheckout, emailNewCheckout } from "@/lib/gateway/alerts";
 import { prisma } from "@/lib/prisma";
 import { getCustomerFromRequest } from "@/lib/customerAuth";
+import { limitByIp } from "@/lib/rateLimit";
 
 // Starts a UPI checkout with the shop's own gateway. Without a database the checkout falls
 // back to manual UPI (customer types the UTR, admin confirms).
 export async function POST(req: NextRequest) {
+  // Each checkout reserves a payable amount for a while, so scripts must not be able to flood it
+  const limited = limitByIp(req, "pay-start", 15, 10 * 60 * 1000);
+  if (limited) return limited;
+
   try {
     if (!(await isDatabaseConnected())) {
       return NextResponse.json({ error: "UPI gateway needs the database", fallback: "manual" }, { status: 503 });

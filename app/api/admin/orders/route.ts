@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllOrders, saveOrder, getOrderById, StoredOrderData } from "@/lib/ordersDb";
-import { priceOrder } from "@/lib/orderPricing";
+import { priceOrder, PricingError } from "@/lib/orderPricing";
+import { consumeStock } from "@/lib/catalog";
 import { verifyAdminRequest } from "@/lib/auth";
 import { orderCreationSchema, cleanIndianPhone } from "@/lib/validations/checkout";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { getSubmittedUtr } from "@/lib/manualUpi";
 import { alertCodOrder } from "@/lib/gateway/alerts";
 import { getCustomerFromRequest } from "@/lib/customerAuth";
+import { limitByIp } from "@/lib/rateLimit";
 import { publicBaseUrl } from "@/lib/gateway/http";
 import { toPublicOrder } from "@/lib/publicOrder";
 import { getToggles } from "@/lib/gateway/toggles";
@@ -57,6 +59,10 @@ export async function GET(req: NextRequest) {
 
 // Storefront Checkout calls this to persist real orders into PostgreSQL
 export async function POST(req: NextRequest) {
+  // Public (the storefront checkout places COD orders here): stop scripts placing fake orders
+  const limited = limitByIp(req, "place-order", 10, 10 * 60 * 1000);
+  if (limited) return limited;
+
   try {
     const rawBody = await req.json();
 
@@ -103,7 +109,13 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Authoritative prices, coupon, shipping and COD fee (lib/orderPricing)
-    const priced = priceOrder(body);
+    let priced;
+    try {
+      priced = await priceOrder(body);
+    } catch (err) {
+      if (err instanceof PricingError) return NextResponse.json({ error: err.message }, { status: 400 });
+      throw err;
+    }
     const validatedItems = priced.items;
     const authoritativeSubtotal = priced.subtotal;
     const authoritativeDiscount = priced.discountAmount;
@@ -143,6 +155,8 @@ export async function POST(req: NextRequest) {
       notes,
       items: validatedItems,
     });
+
+    await consumeStock(validatedItems);
 
     // Send order notification email to admin dipakh810@gmail.com (& customer if email provided)
     sendOrderConfirmationEmail({

@@ -1,5 +1,4 @@
 import { prisma, isDatabaseConnected } from "./prisma";
-import { PRODUCTS, Product } from "@/data/products";
 import { cleanIndianPhone } from "./validations/checkout";
 
 export interface StoredOrderData {

@@ -2,21 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { contactSchema, CONTACT_TOPICS } from "@/lib/validations/contact";
 import { sendContactMessageEmail } from "@/lib/email";
 import { clientIp } from "@/lib/gateway/http";
+import { rateLimited } from "@/lib/rateLimit";
 
 // Contact Us form: emails the message to the shop owner (reply goes straight to the customer).
 
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_PER_WINDOW = 3;
-const recent = new Map<string, number[]>(); // per server instance; enough to stop casual spam
-
-function rateLimited(key: string) {
-  const now = Date.now();
-  const hits = (recent.get(key) || []).filter((t) => now - t < WINDOW_MS);
-  if (hits.length >= MAX_PER_WINDOW) return true;
-  hits.push(now);
-  recent.set(key, hits);
-  return false;
-}
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -29,7 +20,10 @@ export async function POST(req: NextRequest) {
   // Bot filled the hidden field: pretend it worked
   if (data.website) return NextResponse.json({ success: true });
 
-  if (rateLimited(`ip:${clientIp(req) || "unknown"}`) || rateLimited(`email:${data.email.toLowerCase()}`)) {
+  if (
+    rateLimited(`contact-ip:${clientIp(req) || "unknown"}`, MAX_PER_WINDOW, WINDOW_MS) ||
+    rateLimited(`contact-email:${data.email.toLowerCase()}`, MAX_PER_WINDOW, WINDOW_MS)
+  ) {
     return NextResponse.json(
       { error: "You've sent a few messages already. Please wait a few minutes, or email us directly." },
       { status: 429 }

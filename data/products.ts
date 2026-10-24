@@ -1,3 +1,11 @@
+/** One size/option of a product with its own price (like a Shopify variant). */
+export interface Variant {
+  name: string; // e.g. "100G", "250G", "1 Unit"
+  price: number;
+  compareAtPrice?: number | null;
+  sku?: string | null;
+}
+
 export interface Product {
   id: string;
   handle: string;
@@ -20,6 +28,15 @@ export interface Product {
   badge?: string;
   url?: string;
   inStock: boolean;
+  // Managed in Admin → Products (database); missing on the built-in starter catalog below
+  description?: string;
+  variants?: Variant[];
+  status?: "active" | "draft" | "archived";
+  sku?: string;
+  vendor?: string;
+  tags?: string[];
+  stockQuantity?: number;
+  trackInventory?: boolean;
 }
 
 export const PRODUCTS: Product[] = [
