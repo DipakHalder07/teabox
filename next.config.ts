@@ -20,6 +20,13 @@ const privateHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Plain redirects live here instead of in redirect-only pages, so no page has to render first.
+  async redirects() {
+    return [
+      { source: "/collections", destination: "/collections/all", permanent: false },
+      { source: "/order", destination: "/track", permanent: false },
+    ];
+  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

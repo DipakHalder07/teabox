@@ -62,23 +62,23 @@ export default function Footer() {
     {
       title: "LEARN",
       links: [
-        { label: "Tea 101", href: "#" },
-        { label: "Blog", href: "#" },
+        { label: "Tea 101", href: "/blog/tea-101" },
+        { label: "Blog", href: "/blog" },
       ],
     },
     {
       title: "HELP",
       links: [
         { label: "Track Your Order", href: "/track" },
-        { label: "Shipping & Returns", href: "#" },
-        { label: "Contact Us", href: "#" },
+        { label: "Shipping & Returns", href: "/shipping-returns" },
+        { label: "Contact Us", href: "/contact" },
       ],
     },
     {
       title: "LEGAL",
       links: [
-        { label: "Terms + Conditions", href: "#" },
-        { label: "Privacy Policy", href: "#" },
+        { label: "Terms + Conditions", href: "/terms" },
+        { label: "Privacy Policy", href: "/privacy" },
       ],
     },
   ];

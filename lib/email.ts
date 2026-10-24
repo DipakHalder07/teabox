@@ -221,15 +221,17 @@ export async function dispatchEmail({
   subject,
   html,
   text,
+  replyTo,
 }: {
   to: string;
   subject: string;
   html: string;
   text?: string;
+  replyTo?: string;
 }): Promise<{ success: boolean; messageId?: string; isDevMock?: boolean; error?: string }> {
   // 1. Try Gmail connected with "Sign in with Google" (admin → Payment Gateway, no password needed)
   try {
-    const sent = await sendViaGmailApi({ to, subject, html, text, fromName: "Teabox" });
+    const sent = await sendViaGmailApi({ to, subject, html, text, replyTo, fromName: "Teabox" });
     if (sent) {
       console.log(`[Email / Gmail API] Successfully sent to ${to} from ${sent.from}: ${sent.id}`);
       return { success: true, messageId: sent.id, isDevMock: false };
@@ -255,6 +257,7 @@ export async function dispatchEmail({
         subject,
         html,
         text,
+        replyTo,
       });
       console.log(`[Email / Gmail SMTP] Successfully sent to ${to}: ${info.messageId}`);
       return { success: true, messageId: info.messageId, isDevMock: false };
@@ -285,6 +288,7 @@ export async function dispatchEmail({
           subject,
           html,
           text,
+          ...(replyTo ? { reply_to: replyTo } : {}),
         }),
       });
       const data = await response.json();
@@ -355,6 +359,56 @@ export async function sendCheckoutStartedEmail(c: CheckoutStartedDetails) {
     subject: `🛒 Checkout started #${c.orderNumber} · ${c.payAmount} · pay by ${c.expiresAt}`,
     html,
     text,
+  });
+}
+
+export interface ContactMessage {
+  name: string;
+  email: string;
+  phone?: string | null;
+  orderNumber?: string | null;
+  topic: string;
+  message: string;
+}
+
+/**
+ * A Contact Us form message, sent to the shop owner. Replying in Gmail answers the customer directly.
+ */
+export async function sendContactMessageEmail(m: ContactMessage) {
+  const rows = [
+    ["Name", m.name],
+    ["Email", m.email],
+    ["Phone", m.phone || "Not given"],
+    ["Order", m.orderNumber || "Not given"],
+    ["Topic", m.topic],
+  ];
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head><meta charset="utf-8"><title>Contact message from ${esc(m.name)}</title></head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f7f5f0; margin: 0; padding: 24px; color: #202020;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e7e2d8; border-radius: 12px; overflow: hidden;">
+          <div style="background: #1f3a2c; color: #ffffff; padding: 20px 24px;">
+            <div style="font-size: 12px; letter-spacing: 1px; color: #a3c4b2; text-transform: uppercase; font-weight: 700;">Contact Us · ${esc(m.topic)}</div>
+            <div style="font-size: 20px; font-weight: 800; margin-top: 4px;">${esc(m.name)}</div>
+          </div>
+          <div style="padding: 22px 24px;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              ${rows.map(([k, v]) => `<tr><td style="padding: 5px 0; color: #5c5a52; width: 90px;">${k}</td><td style="padding: 5px 0; font-weight: 600;">${esc(v)}</td></tr>`).join("")}
+            </table>
+            <div style="background: #fafafa; border: 1px solid #e7e2d8; border-radius: 8px; padding: 14px; margin-top: 16px; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${esc(m.message)}</div>
+            <p style="font-size: 12px; color: #747576; margin: 14px 0 0;">Hit Reply to answer ${esc(m.email)} directly.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+  return dispatchEmail({
+    to: ADMIN_NOTIFICATION_EMAIL,
+    subject: `💬 ${m.topic}: message from ${m.name}${m.orderNumber ? ` (#${m.orderNumber})` : ""}`,
+    html,
+    text: `${rows.map(([k, v]) => `${k}: ${v}`).join("\n")}\n\n${m.message}`,
+    replyTo: m.email,
   });
 }
 

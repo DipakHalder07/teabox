@@ -85,7 +85,7 @@ async function accessToken(sealed: string) {
  * Sends one email via the Gmail API. Returns null when no Gmail is connected, so the caller can
  * fall back to another provider.
  */
-export async function sendViaGmailApi(mail: { to: string; subject: string; html: string; text?: string; fromName: string }) {
+export async function sendViaGmailApi(mail: { to: string; subject: string; html: string; text?: string; replyTo?: string; fromName: string }) {
   if (!isGmailConfigured()) return null;
   const [sealed, email, lastError] = await Promise.all([
     getSetting(KEYS.refreshToken),
@@ -98,7 +98,7 @@ export async function sendViaGmailApi(mail: { to: string; subject: string; html:
     // Nodemailer only builds the MIME message here; the Gmail API does the sending.
     const composed = await nodemailer
       .createTransport({ streamTransport: true, buffer: true })
-      .sendMail({ from: { name: mail.fromName, address: email }, to: mail.to, subject: mail.subject, html: mail.html, text: mail.text });
+      .sendMail({ from: { name: mail.fromName, address: email }, to: mail.to, subject: mail.subject, html: mail.html, text: mail.text, replyTo: mail.replyTo });
 
     const res = await fetch(`${getGoogleConfig().gmailBase}/gmail/v1/users/me/messages/send`, {
       method: "POST",
