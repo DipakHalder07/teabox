@@ -22,7 +22,7 @@ export const emailOtpSchema = z.object({
 
 export const emailOtpVerifySchema = z.object({
   email: z.string().email(),
-  code: z.string().regex(/^\d{4}$/, "Verification code must be 4 digits"),
+  code: z.string().regex(/^\d{4,6}$/, "Verification code must be 6 digits"),
 });
 
 export const fastrrOtpSchema = z.object({

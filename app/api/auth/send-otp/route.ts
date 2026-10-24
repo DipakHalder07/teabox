@@ -34,17 +34,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Dispatch branded email via SMTP (Nodemailer) or Resend API (with dev console fallback)
-    await sendOtpVerificationEmail(email, otpResult.code);
+    // Dispatch branded email via Nodemailer (Gmail SMTP) or Resend API (with local dev fallback)
+    const emailResult = await sendOtpVerificationEmail(email, otpResult.code);
 
-    // Secure server log (Never transmitted to client)
-    console.log(`[Teabox Auth] OTP generated & dispatched for: ${email}`);
+    if (!emailResult.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: emailResult.error || "Failed to dispatch email. Please verify your Gmail configuration.",
+        },
+        { status: 502 }
+      );
+    }
 
-    // Return success without revealing the code to the client
+    // Secure server log
+    console.log(
+      `[Teabox Auth] 6-digit OTP generated & dispatched for ${email} (mock: ${!!emailResult.isDevMock})`
+    );
+
+    // If running in development or when mock mode is active, include devCode for effortless testing
+    const isDev = process.env.NODE_ENV !== "production";
+    const includeDevCode = isDev || emailResult.isDevMock;
+
     return NextResponse.json({
       success: true,
-      message: `Verification code sent to ${email}`,
+      message: `A 6-digit verification code was sent to ${email}`,
       cooldownSeconds: 30,
+      ...(includeDevCode ? { devCode: otpResult.code, isDevMock: emailResult.isDevMock } : {}),
     });
   } catch (err) {
     console.error("[Auth API] Error in send-otp:", err);

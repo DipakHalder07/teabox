@@ -37,13 +37,17 @@ export interface OrderEmailDetails {
 }
 
 /**
- * Creates Nodemailer Transporter if credentials are configured
+ * Creates Nodemailer Transporter if credentials are configured.
+ * Specifically optimized for Gmail (Google App Passwords) and custom SMTP servers.
  */
 function getSmtpTransporter() {
   const user = process.env.GMAIL_USER || process.env.SMTP_USER;
-  const pass = process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS;
+  const rawPass = process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS;
 
-  if (!user || !pass) return null;
+  if (!user || !rawPass) return null;
+
+  // Google App Passwords often contain spaces when copied (e.g. "abcd efgh ijkl mnop")
+  const pass = rawPass.trim().replace(/\s+/g, "");
 
   if (process.env.SMTP_HOST) {
     return nodemailer.createTransport({
@@ -54,7 +58,7 @@ function getSmtpTransporter() {
     });
   }
 
-  // Default: Gmail service
+  // Default: Gmail SMTP service via Nodemailer
   return nodemailer.createTransport({
     service: "gmail",
     auth: { user, pass },
@@ -182,9 +186,9 @@ function buildAdminOrderNotificationHtml(order: OrderEmailDetails): string {
 }
 
 /**
- * Dispatch an email to a recipient via SMTP or Resend
+ * Dispatch an email to a recipient via Nodemailer (Gmail / SMTP), Resend, or Dev Fallback
  */
-async function dispatchEmail({
+export async function dispatchEmail({
   to,
   subject,
   html,
@@ -192,22 +196,28 @@ async function dispatchEmail({
   to: string;
   subject: string;
   html: string;
-}): Promise<{ success: boolean; messageId?: string }> {
-  // 1. Try Nodemailer / SMTP / Gmail
+}): Promise<{ success: boolean; messageId?: string; isDevMock?: boolean; error?: string }> {
+  // 1. Try Nodemailer / Gmail SMTP
   const smtpTransporter = getSmtpTransporter();
   if (smtpTransporter) {
     try {
       const fromAddress = process.env.GMAIL_USER || process.env.SMTP_USER || "orders@teabox.com";
       const info = await smtpTransporter.sendMail({
-        from: `Teabox Orders <${fromAddress}>`,
+        from: `Teabox <${fromAddress}>`,
         to,
         subject,
         html,
       });
-      console.log(`[Email / SMTP] Successfully sent to ${to}: ${info.messageId}`);
-      return { success: true, messageId: info.messageId };
-    } catch (err) {
-      console.warn(`[Email / SMTP] Failed to send via SMTP to ${to}:`, err);
+      console.log(`[Email / Gmail SMTP] Successfully sent to ${to}: ${info.messageId}`);
+      return { success: true, messageId: info.messageId, isDevMock: false };
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error(`[Email / Gmail SMTP] Failed to send to ${to}:`, errorMessage);
+      return {
+        success: false,
+        error: `Gmail sending failed: ${errorMessage}. Please check GMAIL_USER and GMAIL_APP_PASSWORD in .env.`,
+        isDevMock: false,
+      };
     }
   }
 
@@ -231,18 +241,18 @@ async function dispatchEmail({
       const data = await response.json();
       if (data?.id) {
         console.log(`[Email / Resend] Successfully sent to ${to}: ${data.id}`);
-        return { success: true, messageId: data.id };
+        return { success: true, messageId: data.id, isDevMock: false };
       }
     } catch (err) {
       console.warn(`[Email / Resend] Failed to send via Resend to ${to}:`, err);
     }
   }
 
-  // 3. Graceful Dev Fallback Logging
+  // 3. Graceful Dev Fallback (When Gmail credentials are not yet configured in local development)
   console.log(
-    `[Email Log] Order notification prepared for ${to} | Subject: "${subject}"`
+    `[Email / Dev Mode] Email prepared for ${to} | Subject: "${subject}" (GMAIL_USER or GMAIL_APP_PASSWORD not set in .env)`
   );
-  return { success: true, messageId: `mock_${Date.now()}` };
+  return { success: true, messageId: `mock_${Date.now()}`, isDevMock: true };
 }
 
 /**
@@ -254,7 +264,7 @@ export async function sendOrderConfirmationEmail(
   try {
     const adminHtml = buildAdminOrderNotificationHtml(order);
 
-    // 1. ALWAYS dispatch to admin dipakh810@gmail.com
+    // 1. ALWAYS dispatch to admin
     await dispatchEmail({
       to: ADMIN_NOTIFICATION_EMAIL,
       subject: `🚨 New Teabox Order Received: #${order.orderNumber} (₹${order.totalAmount} - ${order.paymentMethod.toUpperCase()})`,
@@ -278,56 +288,66 @@ export async function sendOrderConfirmationEmail(
 }
 
 /**
- * Generate Teabox Branded OTP Login Verification Email HTML
+ * Generate Teabox Branded 6-Digit OTP Login Verification Email HTML
  */
 function buildOtpNotificationHtml(code: string, email: string): string {
-  const codeDigits = code.split("").join(" ");
+  const digits = code.split("");
 
   return `
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
       <head>
         <meta charset="utf-8">
-        <title>Your Teabox Login Code</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Your Teabox Verification Code: ${code}</title>
         <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #fafafa; margin: 0; padding: 28px 12px; color: #202020; }
-          .container { max-width: 500px; margin: 0 auto; background: #ffffff; border-radius: 14px; overflow: hidden; border: 1px solid #e7e2d8; box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
-          .header { background: #1f3a2c; padding: 24px 20px; text-align: center; }
-          .header h1 { margin: 0; color: #02cb5a; font-size: 24px; font-weight: 800; letter-spacing: 2.5px; }
-          .header p { margin: 4px 0 0; color: #a3c4b2; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; }
-          .content { padding: 32px 24px; text-align: center; }
-          .title { font-size: 20px; font-weight: 700; color: #202020; margin: 0 0 8px; }
-          .subtitle { font-size: 13.5px; color: #5c5a52; line-height: 1.5; margin: 0 0 20px; }
-          .code-box { background: #f2faf5; border: 2px dashed #02cb5a; border-radius: 12px; padding: 20px; margin: 24px 0; }
-          .code-label { font-size: 11px; font-weight: 700; color: #5c5a52; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-          .code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 36px; font-weight: 800; letter-spacing: 10px; color: #016c2f; margin: 0; }
-          .info { font-size: 12.5px; color: #747576; line-height: 1.5; margin: 20px 0 0; }
-          .footer { background: #fafafa; border-top: 1px solid #f0ede6; padding: 16px 20px; text-align: center; font-size: 11.5px; color: #9c9a94; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f7f6f2; margin: 0; padding: 32px 12px; color: #1f2937; }
+          .wrapper { max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e7e2d8; box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+          .header { background: #1f3a2c; padding: 28px 24px; text-align: center; }
+          .header h1 { margin: 0; color: #02cb5a; font-size: 26px; font-weight: 800; letter-spacing: 3px; font-family: Georgia, serif; }
+          .header p { margin: 6px 0 0; color: #a3c4b2; font-size: 11.5px; letter-spacing: 1px; text-transform: uppercase; font-weight: 600; }
+          .content { padding: 36px 28px; text-align: center; }
+          .title { font-size: 22px; font-weight: 800; color: #1f3a2c; margin: 0 0 10px; }
+          .subtitle { font-size: 14px; color: #5c5a52; line-height: 1.6; margin: 0 0 24px; }
+          .code-container { background: #f0fdf4; border: 2px dashed #02cb5a; border-radius: 14px; padding: 22px 16px; margin: 24px 0; }
+          .code-label { font-size: 11px; font-weight: 700; color: #016c2f; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; }
+          .digits-grid { display: flex; justify-content: center; gap: 8px; margin: 0 auto; max-width: 340px; }
+          .digit-box { display: inline-block; width: 44px; height: 52px; line-height: 52px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 28px; font-weight: 800; color: #1f3a2c; background: #ffffff; border: 1.5px solid #a3c4b2; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); text-align: center; margin: 0 3px; }
+          .expiry-note { font-size: 12.5px; color: #747576; line-height: 1.5; margin: 20px 0 0; }
+          .security-alert { background: #fafafa; border-radius: 10px; padding: 14px; margin-top: 24px; font-size: 12px; color: #5c5a52; border: 1px solid #e7e2d8; text-align: left; }
+          .footer { background: #fafafa; border-top: 1px solid #f0ede6; padding: 20px; text-align: center; font-size: 11.5px; color: #9c9a94; line-height: 1.5; }
         </style>
       </head>
       <body>
-        <div class="container">
+        <div class="wrapper">
           <div class="header">
             <h1>TEABOX</h1>
-            <p>Fresh from the Source</p>
+            <p>Fresh from the Source · Est. 2012</p>
           </div>
           <div class="content">
-            <h2 class="title">Your Verification Code</h2>
+            <h2 class="title">Customer Sign-In Verification</h2>
             <p class="subtitle">
               Hello,<br>
-              We received a request to sign in to your Teabox account using <strong>${email}</strong>.
+              We received a request to access your Teabox account for <strong>${email}</strong>.<br>
+              Use the 6-digit code below to complete your login:
             </p>
-            <div class="code-box">
-              <div class="code-label">4-Digit Verification Code</div>
-              <div class="code">${codeDigits}</div>
+            <div class="code-container">
+              <div class="code-label">One-Time Verification Code</div>
+              <div class="digits-grid">
+                ${digits.map((d) => `<span class="digit-box">${d}</span>`).join("")}
+              </div>
             </div>
-            <p class="info">
-              This code is valid for <strong>10 minutes</strong>.<br>
-              If you did not request this login code, you can safely ignore this email.
+            <p class="expiry-note">
+              ⏱️ This code will expire in <strong>10 minutes</strong>.
             </p>
+            <div class="security-alert">
+              <strong>🔒 Security Reminder:</strong><br>
+              Never share this verification code with anyone. Teabox staff will never ask for your one-time password over phone, email, or WhatsApp.
+            </div>
           </div>
           <div class="footer">
-            <p style="margin: 0;">Automated Teabox Storefront Security · © ${new Date().getFullYear()} Teabox India</p>
+            <p style="margin: 0 0 4px;">Teabox Storefront · Automated Account Verification</p>
+            <p style="margin: 0;">If you did not request this login code, you can safely ignore this message.</p>
           </div>
         </div>
       </body>
@@ -336,23 +356,28 @@ function buildOtpNotificationHtml(code: string, email: string): string {
 }
 
 /**
- * Dispatch 4-digit OTP login verification code to customer's email
+ * Dispatch 6-digit OTP login verification code to customer's email via Nodemailer (Gmail / SMTP)
  */
 export async function sendOtpVerificationEmail(
   email: string,
   code: string
-): Promise<{ success: boolean }> {
+): Promise<{ success: boolean; isDevMock?: boolean; error?: string }> {
   try {
     const html = buildOtpNotificationHtml(code, email);
     const result = await dispatchEmail({
       to: email,
-      subject: `${code} is your Teabox verification code`,
+      subject: `${code} is your Teabox login verification code`,
       html,
     });
-    return { success: result.success };
-  } catch (err) {
-    console.error("[Email Dispatch] Error in sendOtpVerificationEmail:", err);
-    return { success: false };
+    return {
+      success: result.success,
+      isDevMock: result.isDevMock,
+      error: result.error,
+    };
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error("[Email Dispatch] Error in sendOtpVerificationEmail:", errorMessage);
+    return { success: false, error: errorMessage };
   }
 }
 

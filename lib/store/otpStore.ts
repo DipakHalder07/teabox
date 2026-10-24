@@ -1,6 +1,6 @@
 /**
  * Server-Side OTP Store & Validation Engine for Teabox customer email sign-in.
- * Generates 4-digit one-time passwords (10 min expiry, 30s resend cooldown, max 5 tries).
+ * Generates 6-digit one-time passwords (10 min expiry, 30s resend cooldown, max 5 tries).
  *
  * Codes live in the database (otp_challenges, keyed "email:<address>") so they work on Vercel,
  * where the send and verify requests can reach different server instances. Memory is used only
@@ -45,13 +45,13 @@ function cooldownError(lastSentAt: number): GenerateResult {
 }
 
 /**
- * Generate a new 4-digit OTP for an email address.
+ * Generate a new 6-digit OTP for an email address.
  * Enforces a 30s resend cooldown and hourly limits per email and per IP.
  */
 export async function generateOtp(email: string, ip: string | null = null): Promise<GenerateResult> {
   const key = keyFor(email);
   const now = Date.now();
-  const code = String(crypto.randomInt(1000, 10000));
+  const code = String(crypto.randomInt(100000, 1000000));
 
   if (await isDatabaseConnected()) {
     const hourAgo = new Date(now - 60 * 60 * 1000);

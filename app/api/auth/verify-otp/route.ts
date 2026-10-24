@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: parseResult.error.issues[0]?.message || "Please enter a valid 4-digit code.",
+          error: parseResult.error.issues[0]?.message || "Please enter a valid 6-digit code.",
         },
         { status: 400 }
       );
