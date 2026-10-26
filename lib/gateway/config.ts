@@ -101,6 +101,7 @@ export const PAYMENT_APP_PACKAGES = new Set([
   "com.fampay.in",
   "com.fedmobile",
   "com.fisglobal.bandhanupi.app",
+  "com.android.mms",
   "com.freecharge.android",
   "com.google.android.apps.messaging",
   "com.google.android.apps.nbu.paisa.user",
