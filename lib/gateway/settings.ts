@@ -5,6 +5,16 @@ export async function getSetting(key: string) {
   return row?.value ?? null;
 }
 
+export async function getSettings(keys: string[]): Promise<Record<string, string | null>> {
+  const map: Record<string, string | null> = {};
+  for (const k of keys) map[k] = null;
+  try {
+    const rows = await prisma.gatewaySetting.findMany({ where: { key: { in: keys } } });
+    for (const row of rows) map[row.key] = row.value;
+  } catch {}
+  return map;
+}
+
 export async function setSetting(key: string, value: string) {
   await prisma.gatewaySetting.upsert({ where: { key }, update: { value }, create: { key, value } });
 }

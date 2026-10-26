@@ -607,3 +607,140 @@ export async function sendOtpVerificationEmail(
   }
 }
 
+export interface AbandonedCheckoutEmailDetails {
+  checkoutNumber: string;
+  customerName: string;
+  customerEmail: string;
+  items: Array<{
+    title: string;
+    weight?: string | null;
+    quantity: number;
+    price: number;
+    image?: string | null;
+  }>;
+  subtotal: number;
+  discountAmount: number;
+  shippingFee: number;
+  totalAmount: number;
+  recoveryUrl: string;
+  couponCode?: string | null;
+}
+
+/**
+ * Sends a Shopify-style Abandoned Cart Recovery email to the customer with
+ * their saved cart items, recovery button, and freshness guarantee.
+ */
+export async function sendAbandonedCheckoutRecoveryEmail(
+  details: AbandonedCheckoutEmailDetails
+): Promise<{ success: boolean; isDevMock?: boolean; error?: string }> {
+  try {
+    const itemsRows = details.items
+      .map(
+        (item) => `
+        <tr>
+          <td style="padding: 12px 0; border-bottom: 1px solid #f0ede6;">
+            <div style="font-weight: 700; color: #1f3a2c; font-size: 14px;">${esc(item.title)}</div>
+            ${item.weight ? `<div style="font-size: 12px; color: #5c5a52;">Size: ${esc(item.weight)}</div>` : ""}
+            <div style="font-size: 12px; color: #747576;">Qty: ${item.quantity}</div>
+          </td>
+          <td style="padding: 12px 0; border-bottom: 1px solid #f0ede6; text-align: right; font-weight: 700; color: #202020; font-size: 14px;">
+            ₹${(item.price * item.quantity).toLocaleString("en-IN")}
+          </td>
+        </tr>`
+      )
+      .join("");
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Did you leave something behind?</title>
+        </head>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f7f5f0; margin: 0; padding: 24px; color: #202020;">
+          <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border: 1px solid #e7e2d8; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.04);">
+            <div style="background: #1f3a2c; color: #ffffff; padding: 28px 24px; text-align: center;">
+              <div style="font-size: 20px; font-weight: 900; letter-spacing: 2px;">DEMOBOX</div>
+              <div style="font-size: 11px; letter-spacing: 1.5px; color: #a3c4b2; text-transform: uppercase; margin-top: 4px;">100% Fresh Single-Estate Teas</div>
+            </div>
+            <div style="padding: 28px 24px;">
+              <h2 style="margin: 0 0 10px; font-size: 22px; color: #1f3a2c; font-weight: 800;">
+                You left something fresh in your cart!
+              </h2>
+              <p style="margin: 0 0 20px; color: #5c5a52; font-size: 14.5px; line-height: 1.6;">
+                Hi ${esc(details.customerName || "there")},<br>
+                We noticed you started your checkout at Demobox, but didn't finish. Your selected single-estate teas are safely reserved for you.
+              </p>
+
+              <div style="background: #faf8f5; border: 1px solid #ede8de; border-radius: 12px; padding: 18px; margin-bottom: 24px;">
+                <div style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #5c5a52; margin-bottom: 10px;">
+                  Your Saved Items (${details.items.length})
+                </div>
+                <table style="width: 100%; border-collapse: collapse;">
+                  ${itemsRows}
+                </table>
+                <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed #ded8cc; font-size: 13.5px;">
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #5c5a52;">
+                    <span>Subtotal</span>
+                    <span>₹${details.subtotal.toLocaleString("en-IN")}</span>
+                  </div>
+                  ${
+                    details.discountAmount > 0
+                      ? `<div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #016c2f;">
+                          <span>Discount (${details.couponCode || "Coupon"})</span>
+                          <span>-₹${details.discountAmount.toLocaleString("en-IN")}</span>
+                        </div>`
+                      : ""
+                  }
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 6px; color: #5c5a52;">
+                    <span>Shipping</span>
+                    <span>${details.shippingFee === 0 ? "FREE" : `₹${details.shippingFee}`}</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-weight: 800; font-size: 16px; color: #1f3a2c; border-top: 1px solid #ded8cc; padding-top: 8px;">
+                    <span>Total</span>
+                    <span style="color: #016c2f;">₹${details.totalAmount.toLocaleString("en-IN")}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${esc(details.recoveryUrl)}" style="display: inline-block; background: #02cb5a; color: #1f3a2c; font-weight: 800; font-size: 16px; padding: 16px 36px; border-radius: 10px; text-decoration: none; box-shadow: 0 4px 14px rgba(2, 203, 90, 0.35); text-transform: uppercase; letter-spacing: 0.5px;">
+                  Complete Your Order Now →
+                </a>
+                <div style="font-size: 12px; color: #747576; margin-top: 10px;">
+                  Your address and cart will be restored automatically in 1 click.
+                </div>
+              </div>
+
+              <div style="background: #f0f7f3; border: 1px solid #c9e4d4; border-radius: 10px; padding: 14px 18px; margin-top: 24px;">
+                <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: #1f3a2c; font-size: 13.5px; margin-bottom: 4px;">
+                  <span>✨ 100% Freshness Guarantee</span>
+                </div>
+                <p style="margin: 0; font-size: 12.5px; color: #2e5440; line-height: 1.5;">
+                  All teas are sourced directly from single estates in Darjeeling, Assam, and the Nilgiris, vacuum-sealed at source within 48 hours for pure freshness.
+                </p>
+              </div>
+            </div>
+
+            <div style="background: #faf8f5; border-top: 1px solid #e7e2d8; padding: 18px 24px; text-align: center; font-size: 12px; color: #747576;">
+              <p style="margin: 0 0 6px;">Need help? Reply directly to this email or WhatsApp us at +91 8617513004</p>
+              <p style="margin: 0;">Demobox Tea · Direct from tea gardens to your cup</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    return await dispatchEmail({
+      to: details.customerEmail,
+      subject: `Complete your Demobox order (${details.items.length} items waiting in your cart)`,
+      html,
+      text: `Hi ${details.customerName || "there"},\n\nYou left ${details.items.length} items in your cart at Demobox. Total: ₹${details.totalAmount}.\n\nComplete your order here: ${details.recoveryUrl}\n\nThank you,\nDemobox`,
+    });
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.error("[Email Dispatch] Error in sendAbandonedCheckoutRecoveryEmail:", error);
+    return { success: false, error };
+  }
+}
+

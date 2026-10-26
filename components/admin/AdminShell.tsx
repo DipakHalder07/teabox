@@ -103,7 +103,9 @@ export default function AdminShell({
       label: "Orders",
       href: "/admin/orders",
       icon: ShoppingBag,
-      active: pathname.startsWith("/admin/orders"),
+      active:
+        pathname.startsWith("/admin/orders") ||
+        pathname.startsWith("/admin/abandoned-checkouts"),
     },
     {
       label: "Customers",

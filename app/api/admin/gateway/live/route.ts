@@ -15,40 +15,46 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ serverNow, live: [], recentPaid: [] });
   }
 
-  const [open, paid, otpRequired] = await Promise.all([
-    prisma.paymentSession.findMany({
-      where: { status: { in: ["PENDING", "VERIFYING"] }, expiresAt: { gt: serverNow } },
-      orderBy: { createdAt: "asc" },
-      take: 20,
-    }),
-    prisma.paymentSession.findMany({
-      where: { status: "PAID", paidAt: { gte: new Date(serverNow.getTime() - 10 * 60 * 1000) } },
-      orderBy: { paidAt: "desc" },
-      take: 10,
-    }),
-    isOtpRequired(),
-  ]);
+  try {
+    const [open, paid, otpRequired] = await Promise.all([
+      prisma.paymentSession.findMany({
+        where: { status: { in: ["PENDING", "VERIFYING"] }, expiresAt: { gt: serverNow } },
+        orderBy: { createdAt: "asc" },
+        take: 20,
+      }),
+      prisma.paymentSession.findMany({
+        where: { status: "PAID", paidAt: { gte: new Date(serverNow.getTime() - 10 * 60 * 1000) } },
+        orderBy: { paidAt: "desc" },
+        take: 10,
+      }),
+      isOtpRequired(),
+    ]);
 
-  const name = (draft: unknown) => (draft as { customerName?: string })?.customerName || "Customer";
-  return NextResponse.json({
-    serverNow,
-    live: open.map((s) => ({
-      id: s.id,
-      orderNumber: s.orderNumber,
-      customerName: name(s.orderDraft),
-      payAmount: (s.payPaise / 100).toFixed(2),
-      status: s.status,
-      stage: checkoutStage(s, otpRequired),
-      createdAt: s.createdAt,
-      expiresAt: s.expiresAt,
-    })),
-    recentPaid: paid.map((s) => ({
-      id: s.id,
-      orderNumber: s.orderNumber,
-      customerName: name(s.orderDraft),
-      payAmount: (s.payPaise / 100).toFixed(2),
-      paidAt: s.paidAt,
-      paidVia: s.paidVia,
-    })),
-  });
+    const name = (draft: unknown) => (draft as { customerName?: string })?.customerName || "Customer";
+    return NextResponse.json({
+      serverNow,
+      live: open.map((s) => ({
+        id: s.id,
+        orderNumber: s.orderNumber,
+        customerName: name(s.orderDraft),
+        payAmount: (s.payPaise / 100).toFixed(2),
+        status: s.status,
+        stage: checkoutStage(s, otpRequired),
+        createdAt: s.createdAt,
+        expiresAt: s.expiresAt,
+      })),
+      recentPaid: paid.map((s) => ({
+        id: s.id,
+        orderNumber: s.orderNumber,
+        customerName: name(s.orderDraft),
+        payAmount: (s.payPaise / 100).toFixed(2),
+        paidAt: s.paidAt,
+        paidVia: s.paidVia,
+      })),
+    });
+  } catch (err: any) {
+    // Return empty live state if DB is temporarily waking up from cold start
+    console.warn("[gateway/live] Database wake-up / transient timeout:", err?.message || err);
+    return NextResponse.json({ serverNow, live: [], recentPaid: [] });
+  }
 }

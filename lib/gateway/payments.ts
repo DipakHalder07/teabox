@@ -5,6 +5,7 @@ import { priceOrder, PricedOrder, OrderLineInput, PricingError } from "@/lib/ord
 import { consumeStock } from "@/lib/catalog";
 import { after } from "next/server";
 import { sendOrderConfirmationEmail } from "@/lib/email";
+import { markAbandonedCheckoutRecovered } from "@/lib/abandonedCheckoutsDb";
 import { alertPaid } from "./alerts";
 import { getUpiConfig, LATE_MATCH_MS, PAYMENT_WINDOW_MS, VERIFYING_EXTENSION_MS } from "./config";
 
@@ -244,6 +245,14 @@ export async function markSessionPaid(
 
   if (result) {
     await consumeStock(result.items);
+    // Mark any abandoned checkout session as recovered
+    markAbandonedCheckoutRecovered({
+      customerPhone: result.customerPhone,
+      customerEmail: result.customerEmail,
+      orderNumber: result.orderNumber,
+      orderId: result.id,
+    }).catch(() => {});
+
     const settled = await prisma.paymentSession.findUnique({ where: { id: sessionId } });
     if (settled) {
       // After the response, so a phone or customer request is not slowed down by WhatsApp.

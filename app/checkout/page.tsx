@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion, AnimatePresence } from "motion/react";
@@ -45,9 +45,12 @@ interface UpiSessionData extends Partial<Omit<TeaPaySessionView, "status">> {
   expiresAt?: string;
 }
 
-export default function CheckoutPage() {
+function CheckoutPageContent() {
   const router = useRouter();
-  const { cartItems, subtotal, clearCart, hasHydrated } = useCart();
+  const searchParams = useSearchParams();
+  const recoverToken = searchParams?.get("recover");
+  const [recoveredBanner, setRecoveredBanner] = useState<string | null>(null);
+  const { cartItems, subtotal, clearCart, hasHydrated, mergeCartItems } = useCart();
 
   // Step state: 1 = Address & Contact, 2 = Payment, 3 = Confirmation
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -110,6 +113,52 @@ export default function CheckoutPage() {
       if (saved?.email) setValue("email", saved.email);
     } catch {}
   }, [setValue]);
+
+  // Shopify-style abandoned cart recovery via ?recover=<token>
+  useEffect(() => {
+    if (!recoverToken) return;
+    fetch(`/api/checkout/abandoned?token=${encodeURIComponent(recoverToken)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success && data.checkout) {
+          const c = data.checkout;
+          if (c.customerName) setValue("fullName", c.customerName);
+          if (c.customerPhone) setValue("phone", c.customerPhone);
+          if (c.customerEmail) setValue("email", c.customerEmail);
+          if (c.pincode) setValue("pincode", c.pincode);
+          if (c.city) setValue("city", c.city);
+          if (c.state) setValue("state", c.state);
+          if (c.address) setValue("address", c.address);
+          if (c.landmark) setValue("landmark", c.landmark);
+
+          if (c.couponCode) {
+            setCouponCode(c.couponCode);
+            if (c.discountAmount > 0) {
+              setAppliedCoupon({ code: c.couponCode, discount: c.discountAmount });
+            }
+          }
+
+          if (Array.isArray(c.items) && c.items.length > 0 && cartItems.length === 0) {
+            mergeCartItems(
+              c.items.map((i: any) => ({
+                id: i.productId || i.id,
+                title: i.title,
+                weight: i.weight || undefined,
+                price: i.price,
+                quantity: i.quantity || 1,
+                image: i.image || "",
+              }))
+            );
+          }
+
+          setRecoveredBanner(`Welcome back, ${c.customerName}! Your saved checkout items and delivery address have been restored.`);
+          toast.success("Checkout Restored", {
+            description: "Your saved cart & delivery details have been restored.",
+          });
+        }
+      })
+      .catch((e) => console.warn("Failed to restore abandoned checkout:", e));
+  }, [recoverToken, setValue, mergeCartItems, cartItems.length]);
 
   // Auto scroll to top on step transition
   useEffect(() => {
@@ -286,6 +335,38 @@ export default function CheckoutPage() {
     const generatedId = orderId || newOrderNumber();
     setOrderId(generatedId);
     setStep(2);
+
+    // Track Abandoned Checkout (Shopify style): customer entered details & proceeded to payment
+    fetch("/api/checkout/abandoned", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        checkoutNumber: generatedId,
+        customerName: data.fullName,
+        customerPhone: data.phone,
+        customerEmail: data.email || null,
+        address: data.address,
+        city: data.city,
+        state: data.state,
+        pincode: data.pincode,
+        landmark: data.landmark || null,
+        subtotal,
+        discountAmount,
+        couponCode: appliedCoupon?.code || null,
+        shippingFee,
+        codFee,
+        totalAmount: finalTotal,
+        items: cartItems.map((item) => ({
+          productId: item.id,
+          title: item.title,
+          weight: item.weight,
+          price: item.price,
+          quantity: item.quantity,
+          image: item.image,
+        })),
+      }),
+    }).catch((err) => console.warn("Abandoned checkout tracking warning:", err));
+
     initUpiSession(generatedId, finalTotal);
     toast.success("Address Saved", {
       description: "Proceed to payment selection",
@@ -751,6 +832,17 @@ export default function CheckoutPage() {
                         Enter your pan-India delivery address for fresh shipment dispatch.
                       </p>
                     </div>
+
+                    {/* Abandoned Cart Recovery Banner */}
+                    {recoveredBanner && (
+                      <div className="bg-[#eaf8ef] border border-[#a3dfb8] rounded-xl p-3.5 flex items-start gap-2.5 text-[#1b5e20] text-[13px]">
+                        <Sparkles size={16} className="shrink-0 mt-0.5 text-[#02cb5a]" />
+                        <div className="flex-1">
+                          <span className="font-bold block">Cart Restored from Abandoned Checkout</span>
+                          <span>{recoveredBanner}</span>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Mobile Phone Verification */}
                     <div>
@@ -1254,5 +1346,19 @@ export default function CheckoutPage() {
         </div>
       </footer>
     </div>
+  );
+}
+
+export default function CheckoutPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen bg-[#faf8f5] flex items-center justify-center">
+          <div className="w-8 h-8 border-3 border-[#02cb5a] border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <CheckoutPageContent />
+    </React.Suspense>
   );
 }

@@ -16,12 +16,14 @@ import {
   RefreshCw,
   ExternalLink,
   Users,
+  ShoppingCart,
 } from "lucide-react";
 import { StoredOrderData } from "@/lib/ordersDb";
 
 export default function AdminOverviewPage() {
   const [orders, setOrders] = useState<StoredOrderData[]>([]);
   const [customerStats, setCustomerStats] = useState<{ totalCustomers: number; totalSubscribers: number } | null>(null);
+  const [abandonedStats, setAbandonedStats] = useState<{ abandonedCount: number; potentialLostRevenue: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [dbStatus, setDbStatus] = useState<{
     connected: boolean;
@@ -34,11 +36,19 @@ export default function AdminOverviewPage() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const [ordersRes, healthRes, customersRes] = await Promise.allSettled([
+      const [ordersRes, healthRes, customersRes, abandonedRes] = await Promise.allSettled([
         fetch("/api/admin/orders"),
         fetch("/api/admin/status"),
         fetch("/api/admin/customers"),
+        fetch("/api/admin/abandoned-checkouts"),
       ]);
+
+      if (abandonedRes.status === "fulfilled") {
+        const data = await abandonedRes.value.json();
+        if (data?.stats) {
+          setAbandonedStats(data.stats);
+        }
+      }
 
       if (ordersRes.status === "fulfilled") {
         const data = await ordersRes.value.json();
@@ -259,6 +269,37 @@ export default function AdminOverviewPage() {
           </span>
         </div>
       </div>
+
+      {/* Abandoned Cart Recovery Banner */}
+      {abandonedStats && abandonedStats.abandonedCount > 0 && (
+        <div className="bg-[#fffdf5] border border-[#fde68a] rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-[#fef3c7] text-[#b45309] flex items-center justify-center shrink-0">
+              <ShoppingCart size={20} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-[14.5px] text-[#92400e]">
+                  {abandonedStats.abandonedCount} Abandoned Checkout{abandonedStats.abandonedCount > 1 ? "s" : ""}
+                </span>
+                <span className="bg-[#fef3c7] text-[#92400e] text-[10.5px] font-bold px-2 py-0.5 rounded-full border border-[#fde68a]">
+                  ₹{abandonedStats.potentialLostRevenue.toLocaleString("en-IN")} recoverable
+                </span>
+              </div>
+              <p className="text-[12.5px] text-[#78350f] mt-0.5">
+                Customers proceeded to payment but left without paying. Send 1-click WhatsApp or email recovery links.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/admin/abandoned-checkouts"
+            className="px-4 py-2 bg-[#b45309] hover:bg-[#92400e] text-white text-[13px] font-bold rounded-xl flex items-center gap-1.5 transition-colors shrink-0 shadow-xs"
+          >
+            <span>Recover Checkouts</span>
+            <ArrowUpRight size={14} />
+          </Link>
+        </div>
+      )}
 
       {/* Recent Orders Section */}
       <div className="bg-white border border-[#e7e2d8] rounded-2xl shadow-2xs overflow-hidden">

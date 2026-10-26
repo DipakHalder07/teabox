@@ -1,15 +1,25 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, Lock, Mail, ArrowRight } from "lucide-react";
+import { ShieldCheck, Lock, Mail, ArrowRight, Check } from "lucide-react";
 
 export default function AdminLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    try {
+      const savedEmail = localStorage.getItem("teabox_admin_saved_email");
+      if (savedEmail) {
+        setEmail(savedEmail);
+      }
+    } catch {}
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,6 +36,14 @@ export default function AdminLoginPage() {
       const data = await res.json();
 
       if (res.ok && data?.status === "success") {
+        try {
+          if (rememberMe) {
+            localStorage.setItem("teabox_admin_saved_email", email.trim().toLowerCase());
+          } else {
+            localStorage.removeItem("teabox_admin_saved_email");
+          }
+        } catch {}
+
         router.push("/admin");
         router.refresh();
       } else {
@@ -105,6 +123,25 @@ export default function AdminLoginPage() {
             </div>
           </div>
 
+          {/* Remember Me Option */}
+          <div className="flex items-center justify-between pt-1">
+            <label
+              onClick={() => setRememberMe(!rememberMe)}
+              className="flex items-center gap-2.5 cursor-pointer text-[12.5px] text-white/80 hover:text-white select-none transition-colors"
+            >
+              <div
+                className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                  rememberMe
+                    ? "bg-[#02cb5a] border-[#02cb5a] text-[#0e1d15]"
+                    : "bg-[#0e1d15] border-[#2e5440]"
+                }`}
+              >
+                {rememberMe && <Check size={12} strokeWidth={3} />}
+              </div>
+              <span>Remember me (stay logged in for 30 days)</span>
+            </label>
+          </div>
+
           {/* Submit Button */}
           <button
             type="submit"
@@ -125,10 +162,11 @@ export default function AdminLoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 pt-5 border-t border-[#2e5440]/60 text-center text-[11.5px] text-white/50">
-          Sessions end after 12 hours. Repeated wrong passwords lock sign-in for 15 minutes.
+        <p className="mt-6 pt-5 border-t border-[#2e5440]/60 text-center text-[11.5px] text-white/50 leading-relaxed">
+          Sessions stay securely active for 30 days across browser restarts. Repeated wrong passwords lock sign-in for 15 minutes.
         </p>
       </div>
     </div>
   );
 }
+

@@ -234,6 +234,38 @@ export default function FastrrCheckoutModal({ isOpen, onClose }: FastrrCheckoutM
     const generatedId = orderId || newOrderNumber();
     setOrderId(generatedId);
     setStep(2);
+
+    // Track Abandoned Checkout (Shopify style)
+    fetch("/api/checkout/abandoned", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        checkoutNumber: generatedId,
+        customerName: fullName,
+        customerPhone: phone,
+        customerEmail: null,
+        address,
+        city,
+        state,
+        pincode,
+        landmark: landmark || null,
+        subtotal,
+        discountAmount,
+        couponCode: appliedCoupon?.code || null,
+        shippingFee,
+        codFee,
+        totalAmount: finalTotal,
+        items: cartItems.map((item) => ({
+          productId: item.id,
+          title: item.title,
+          weight: item.weight,
+          price: item.price,
+          quantity: item.quantity,
+          image: item.image,
+        })),
+      }),
+    }).catch((err) => console.warn("Abandoned checkout tracking warning:", err));
+
     initUpiSession(generatedId, finalTotal);
   };
 

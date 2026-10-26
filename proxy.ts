@@ -13,8 +13,14 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Admin pages: the login page is open, everything else needs a valid session cookie.
-  if (pathname === "/admin/login") return NextResponse.next();
+  // Admin pages: the login page is open (or redirects if already logged in), everything else needs a valid session cookie.
+  if (pathname === "/admin/login") {
+    const token = req.cookies.get(ADMIN_COOKIE_NAME)?.value;
+    if (token && (await verifyAdminToken(token))) {
+      return NextResponse.redirect(new URL("/admin", req.url));
+    }
+    return NextResponse.next();
+  }
 
   const token = req.cookies.get(ADMIN_COOKIE_NAME)?.value;
   if (!token || !(await verifyAdminToken(token))) {

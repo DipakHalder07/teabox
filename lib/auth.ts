@@ -7,6 +7,7 @@ import { ADMIN_COOKIE_NAME, AdminPayload, verifyAdminToken } from "./adminToken"
 
 export {
   ADMIN_COOKIE_NAME,
+  ADMIN_SESSION_DAYS,
   ADMIN_SESSION_HOURS,
   adminCookieOptions,
   getJwtSecret,

@@ -3,7 +3,8 @@ import { SignJWT, jwtVerify } from "jose";
 // JWT-only helpers, kept free of database imports so proxy.ts can use them.
 
 export const ADMIN_COOKIE_NAME = "teabox_admin_session";
-export const ADMIN_SESSION_HOURS = 12;
+export const ADMIN_SESSION_DAYS = 30;
+export const ADMIN_SESSION_HOURS = ADMIN_SESSION_DAYS * 24; // 30 days persistent session (720 hours)
 const ADMIN_AUDIENCE = "teabox-admin";
 const ADMIN_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER"];
 
@@ -30,14 +31,14 @@ export function getJwtSecret(): Uint8Array {
 }
 
 /**
- * Sign an Admin JWT Session Token
+ * Sign an Admin JWT Session Token (persists for 30 days)
  */
 export async function signAdminToken(payload: AdminPayload): Promise<string> {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setAudience(ADMIN_AUDIENCE)
     .setIssuedAt()
-    .setExpirationTime(`${ADMIN_SESSION_HOURS}h`)
+    .setExpirationTime(`${ADMIN_SESSION_DAYS}d`)
     .sign(getJwtSecret());
 }
 

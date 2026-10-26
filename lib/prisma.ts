@@ -18,50 +18,92 @@ function runtimeDatabaseUrl() {
     if (url.hostname.includes("-pooler") && !url.searchParams.has("pgbouncer")) {
       url.searchParams.set("pgbouncer", "true");
     }
+    if (!url.searchParams.has("connect_timeout")) {
+      url.searchParams.set("connect_timeout", "20");
+    }
+    if (!url.searchParams.has("connection_limit")) {
+      url.searchParams.set("connection_limit", "20");
+    }
+    if (!url.searchParams.has("pool_timeout")) {
+      url.searchParams.set("pool_timeout", "20");
+    }
     return url.toString();
   } catch {
     return raw;
   }
 }
 
-export const prisma =
-  globalForPrisma.prisma ||
-  new PrismaClient({
-    datasourceUrl: runtimeDatabaseUrl(),
-    log: ["warn"],
-  });
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+function getPrismaClient(): PrismaClient {
+  let existing = globalForPrisma.prisma;
+  if (!existing || !("abandonedCheckout" in existing)) {
+    try {
+      for (const k of Object.keys(require.cache)) {
+        if (k.includes(".prisma") || k.includes("@prisma/client")) {
+          delete require.cache[k];
+        }
+      }
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { PrismaClient: FreshClient } = require("@prisma/client");
+      globalForPrisma.prisma = new FreshClient({
+        datasourceUrl: runtimeDatabaseUrl(),
+        log: ["warn"],
+      });
+    } catch {
+      globalForPrisma.prisma = new PrismaClient({
+        datasourceUrl: runtimeDatabaseUrl(),
+        log: ["warn"],
+      });
+    }
+  }
+  return globalForPrisma.prisma!;
 }
+
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = getPrismaClient();
+    const val = (client as any)[prop];
+    return typeof val === "function" ? val.bind(client) : val;
+  },
+});
 
 let lastCheckTime = 0;
 let lastCheckResult = false;
-const CHECK_COOLDOWN_MS = 30000; // Cache connection status for 30s when offline
+const CHECK_SUCCESS_COOLDOWN_MS = 60000;
+const CHECK_FAILURE_COOLDOWN_MS = 4000;
 
 /**
  * Checks if the PostgreSQL database connection is alive and reachable.
- * Caches failure for 30s so requests stay instant (<10ms) without 4-second timeouts.
  */
 export async function isDatabaseConnected(): Promise<boolean> {
   if (!process.env.DATABASE_URL) return false;
 
   const now = Date.now();
-  if (now - lastCheckTime < CHECK_COOLDOWN_MS) {
+  const cooldown = lastCheckResult ? CHECK_SUCCESS_COOLDOWN_MS : CHECK_FAILURE_COOLDOWN_MS;
+  if (now - lastCheckTime < cooldown) {
     return lastCheckResult;
   }
 
   try {
-    // 5s timeout during build/CI to allow remote serverless DB handshake; 2.5s during runtime
-    const timeoutMs =
-      process.env.NEXT_PHASE === "phase-production-build" || process.env.CI || process.env.VERCEL ? 5000 : 2500;
-    const probe = prisma.$queryRaw`SELECT 1`;
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Database connection timeout")), timeoutMs)
-    );
+    const timeoutMs = 20000; // 20s allows Neon serverless PostgreSQL to wake up from cold start
+    let timer: NodeJS.Timeout;
+    const timeout = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+    });
 
-    await Promise.race([probe, timeout]);
-    lastCheckResult = true;
+    const probe = (async () => {
+      try {
+        await prisma.$queryRaw`SELECT 1`;
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+
+    const ok = await Promise.race([probe, timeout]).finally(() => {
+      clearTimeout(timer);
+    });
+
+    lastCheckResult = Boolean(ok);
   } catch {
     lastCheckResult = false;
   }

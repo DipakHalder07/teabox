@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import {
   RefreshCw,
@@ -498,7 +498,10 @@ export default function AdminPaymentGatewayPage() {
   } | null>(null);
   const [confirmUtr, setConfirmUtr] = useState("");
 
+  const inFlight = useRef(false);
   const load = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     try {
       const res = await fetch("/api/admin/gateway/overview");
       if (res.ok) {
@@ -510,6 +513,7 @@ export default function AdminPaymentGatewayPage() {
     } catch (err) {
       console.error("Failed to load gateway overview:", err);
     } finally {
+      inFlight.current = false;
       setLoading(false);
     }
   }, []);
