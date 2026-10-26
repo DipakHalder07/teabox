@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
   Search,
@@ -145,6 +146,24 @@ export default function AdminOrdersPage() {
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           <span>Sync Orders</span>
         </button>
+      </div>
+
+      {/* Sub-Tabs: Orders vs Abandoned Checkouts (Shopify style) */}
+      <div className="flex items-center gap-3 border-b border-[#e7e2d8] pb-1">
+        <Link
+          href="/admin/orders"
+          className="px-4 py-2 text-[13.5px] font-bold text-[#1f3a2c] border-b-2 border-[#02cb5a] -mb-[5px] flex items-center gap-2"
+        >
+          <ShoppingBag size={15} />
+          <span>Orders ({orders.length})</span>
+        </Link>
+        <Link
+          href="/admin/abandoned-checkouts"
+          className="px-4 py-2 text-[13.5px] font-medium text-[#5c5a52] hover:text-[#1f3a2c] transition-colors flex items-center gap-2"
+        >
+          <Clock size={15} />
+          <span>Abandoned Checkouts</span>
+        </Link>
       </div>
 
       {/* Controls Bar: Search & Status Filters */}
@@ -420,6 +439,8 @@ export default function AdminOrdersPage() {
                         <img
                           src={item.image}
                           alt={item.title}
+                          loading="lazy"
+                          decoding="async"
                           className="w-12 h-12 object-contain bg-[#fafafa] rounded-lg border border-[#e7e2d8]"
                         />
                       )}

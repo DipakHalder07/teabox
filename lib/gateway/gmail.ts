@@ -2,7 +2,7 @@ import { getBankEmailDomains, getGoogleConfig, getUpiConfig, isGmailConfigured }
 import { decryptSecret, encryptSecret } from "./crypto";
 import { parseCredit } from "./parse";
 import { recordCredit } from "./payments";
-import { claimInterval, deleteSettings, getSetting, setSetting } from "./settings";
+import { claimInterval, deleteSettings, getSetting, getSettings, setSetting } from "./settings";
 import { getToggles } from "./toggles";
 
 // Reads bank credit-alert emails with the Gmail API (read-only). Vercel-friendly: there is no
@@ -75,18 +75,13 @@ export async function disconnectGmail() {
 }
 
 export async function getGmailStatus() {
-  const [email, lastPollAt, lastError, token] = await Promise.all([
-    getSetting(KEYS.email),
-    getSetting(KEYS.lastPollAt),
-    getSetting(KEYS.lastError),
-    getSetting(KEYS.refreshToken),
-  ]);
+  const map = await getSettings([KEYS.email, KEYS.lastPollAt, KEYS.lastError, KEYS.refreshToken]);
   return {
     configured: isGmailConfigured(),
-    connected: Boolean(token),
-    email,
-    lastPollAt: lastPollAt ? new Date(Number(lastPollAt)).toISOString() : null,
-    lastError,
+    connected: Boolean(map[KEYS.refreshToken]),
+    email: map[KEYS.email],
+    lastPollAt: map[KEYS.lastPollAt] ? new Date(Number(map[KEYS.lastPollAt])).toISOString() : null,
+    lastError: map[KEYS.lastError],
   };
 }
 

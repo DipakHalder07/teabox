@@ -187,6 +187,44 @@ model OrderItem {
 }
 
 // ----------------------------------------------------
+// 4b. ABANDONED CHECKOUTS (Shopify-Style Cart Recovery)
+// Created when customer enters delivery details and proceeds to payment,
+// but leaves without completing the payment.
+// ----------------------------------------------------
+model AbandonedCheckout {
+  id               String    @id @default(cuid())
+  checkoutNumber   String    @unique // e.g. "TB-CHK-87421"
+  customerName     String
+  customerPhone    String
+  customerEmail    String?
+  address          String
+  city             String
+  state            String
+  pincode          String
+  landmark         String?
+  subtotal         Int
+  discountAmount   Int       @default(0)
+  couponCode       String?
+  shippingFee      Int       @default(0)
+  codFee           Int       @default(0)
+  totalAmount      Int
+  items            Json      // [{ id, productId, title, weight, price, quantity, image }]
+  status           String    @default("ABANDONED") // "ABANDONED" | "RECOVERED"
+  recoveryStatus   String    @default("UNSENT")    // "UNSENT" | "EMAIL_SENT" | "WHATSAPP_SENT"
+  recoveredOrderId String?   // Order id once completed
+  recoveryToken    String    @unique @default(cuid())
+  lastContactedAt  DateTime?
+  recoveredAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([status, createdAt])
+  @@index([customerPhone])
+  @@index([customerEmail])
+  @@map("abandoned_checkouts")
+}
+
+// ----------------------------------------------------
 // 5. PAYMENT TRANSACTIONS (YouPI-PG & COD)
 // ----------------------------------------------------
 model PaymentLog {

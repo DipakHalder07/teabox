@@ -2,7 +2,7 @@ import nodemailer from "nodemailer";
 import { getGoogleConfig, isGmailConfigured } from "./config";
 import { decryptSecret, encryptSecret } from "./crypto";
 import { tokenRequest } from "./gmail";
-import { deleteSettings, getSetting, setSetting } from "./settings";
+import { deleteSettings, getSetting, getSettings, setSetting } from "./settings";
 
 // Sends shop emails (login codes, order emails) from the admin's Gmail through the Gmail API.
 // The admin signs in with Google once; no Gmail password or App Password is stored anywhere.
@@ -64,12 +64,8 @@ export async function disconnectGmailSender() {
 }
 
 export async function getGmailSenderStatus() {
-  const [email, lastError, token] = await Promise.all([
-    getSetting(KEYS.email),
-    getSetting(KEYS.lastError),
-    getSetting(KEYS.refreshToken),
-  ]);
-  return { configured: isGmailConfigured(), connected: Boolean(token), email, lastError };
+  const map = await getSettings([KEYS.email, KEYS.lastError, KEYS.refreshToken]);
+  return { configured: isGmailConfigured(), connected: Boolean(map[KEYS.refreshToken]), email: map[KEYS.email], lastError: map[KEYS.lastError] };
 }
 
 async function accessToken(sealed: string) {

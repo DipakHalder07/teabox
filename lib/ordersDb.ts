@@ -1,5 +1,6 @@
 import { prisma, isDatabaseConnected } from "./prisma";
 import { cleanIndianPhone } from "./validations/checkout";
+import { markAbandonedCheckoutRecovered } from "./abandonedCheckoutsDb";
 
 export interface StoredOrderData {
   id: string;
@@ -113,11 +114,27 @@ export async function saveOrder(orderData: Omit<StoredOrderData, "createdAt" | "
         },
         include: { items: true },
       });
+      // Automatically recover any open abandoned checkout for this customer
+      markAbandonedCheckoutRecovered({
+        customerPhone: orderData.customerPhone,
+        customerEmail: orderData.customerEmail,
+        orderNumber: orderData.orderNumber,
+        orderId: orderData.id,
+      }).catch((e) => console.warn("Failed to mark abandoned checkout recovered:", e));
+
       return created as unknown as StoredOrderData;
     }
   } catch (err) {
     console.warn("PostgreSQL order save warning (using memory store):", err);
   }
+
+  // Also recover in-memory
+  markAbandonedCheckoutRecovered({
+    customerPhone: orderData.customerPhone,
+    customerEmail: orderData.customerEmail,
+    orderNumber: orderData.orderNumber,
+    orderId: orderData.id,
+  }).catch(() => {});
 
   return fullOrder;
 }

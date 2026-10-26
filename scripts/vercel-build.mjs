@@ -18,6 +18,7 @@ function directDatabaseUrl() {
     url.hostname = url.hostname.replace("-pooler", "");
     url.searchParams.delete("pgbouncer");
     url.searchParams.delete("connection_limit");
+    url.searchParams.set("connect_timeout", "30");
     return url;
   } catch {
     return null;
